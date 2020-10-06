@@ -1,0 +1,114 @@
+%%% -------------------------------------------------------------------
+%%% @author  : Joq Erlang
+%%% @doc: : 
+%%%  
+%%% Created : 10 dec 2012
+%%% -------------------------------------------------------------------
+-module(computer). 
+
+
+-export([check_computers/0,
+	 wanted_state_computers/0,
+	 check_node/2
+	]).
+
+-define(TimeOut,3000).
+
+%% ====================================================================
+%% External functions
+%% ====================================================================
+
+%@doc, spec etc
+
+%check_computers()->
+%    Computers=db_computer:read_all(),
+%    R1=[{HostId,get_hostname(HostId,User,PassWd,IpAddr,Port)}||{HostId,User,PassWd,IpAddr,Port}<-Computers],
+%    ComputerStatus=check_status(R1,[]),
+%    ComputerStatus.
+
+check_computers()->
+    Computers=db_computer:read_all(),
+    MapProcesses=map_start(Computers,[]),
+    CollectedResult=map_collect(MapProcesses),
+    ComputerStatus=map_reduce(CollectedResult),
+    ComputerStatus.
+
+map_start([],MapProcesses)->
+    MapProcesses;
+map_start([{HostId,User,PassWd,IpAddr,Port}|T],Acc)->
+    Parent=self(),
+    Pid=spawn_link(fun()->get_hostname(Parent,HostId,User,PassWd,IpAddr,Port) end),
+    map_start(T,[{HostId,Pid}|Acc]).
+			   
+
+map_collect([])->
+    [];
+map_collect(MapProcesses)->
+    N=lists:flatlength(MapProcesses), 
+    map_collect(N,[]).
+
+map_collect(0,CollectedInfo)->
+    CollectedInfo;
+map_collect(N,Acc) ->
+    NewAcc=receive
+	       {_Pid,GetHostNameResult}->
+		   [GetHostNameResult|Acc]
+	   after 2*?TimeOut->
+		   Acc
+    end,
+    map_collect(N-1,NewAcc).
+
+map_reduce(CollectedResult)->		
+  check_status(CollectedResult,[]).
+
+get_hostname(Parent,HostId,User,PassWd,IpAddr,Port)->
+    Msg="hostname",
+    Result=my_ssh:ssh_send(IpAddr,Port,User,PassWd,Msg,?TimeOut),
+    Parent!{self(),{HostId,Result}}.
+
+
+check_status([],ComputerStatus)->
+    ComputerStatus;
+check_status([{HostId,[HostId]}|T],Acc)->
+    check_status(T,[{running,HostId}|Acc]);
+
+check_status([{HostId,{error,_Err}}|T],Acc) ->
+    check_status(T,[{stopped,HostId}|Acc]).
+
+
+
+
+
+wanted_state_computers()->
+    HostId=net_adm:localhost(),
+    MnesiaVm=list_to_atom("mnesia@"++HostId),
+    MnesiaVm.
+
+check_node(_Info,TimeOut)->
+    VmId=HostId=Ip=Port=User=PassWd=TimeOut=glurk,
+    Status=case my_ssh:ssh_connect(Ip,Port,User,PassWd,TimeOut) of
+	       {ok,ConRef,_ChanId}->
+		   Vm=list_to_atom(VmId++"@"++HostId),
+		   case net_adm:ping(Vm) of
+		       {pong,Vm,vm_service}->
+			   my_ssh:close(ConRef),
+			   {running,[]};
+		       {badrpc,nodedown}->
+			   my_ssh:close(ConRef),
+			   {nodedown,[]};
+		       {badrpc,{'EXIT',{undef,Err}}}->
+			   my_ssh:close(ConRef),
+			   {unknown,{'EXIT',{undef,Err}}};
+		       Err ->
+			   {unknown,Err}
+		   end;
+	       {error,ehostunreach} ->
+		   {unknown,ehostunreach};
+	       {error,econnrefused} ->
+		   {unknown,econnrefused};
+	       {error,Err}->
+		   {unknown,Err};
+	       Error ->
+		   {unknown,Error}
+	   end,
+    Status.
