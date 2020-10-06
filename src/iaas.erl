@@ -21,9 +21,7 @@
 %% Key Data structures
 %% 
 %% --------------------------------------------------------------------
--record(state, {all,
-		active,
-		passive}).
+-record(state, {computer_status}).
 
 
 
@@ -33,7 +31,8 @@
 -define(HbInterval,20*1000).
 
 
--export([start_node/3,stop_node/1,
+-export([running_computers/0,stopped_computers/0,
+	 start_node/3,stop_node/1,
 	 active/0,passive/0,all/0,
 	 log/0
 	]).
@@ -66,7 +65,10 @@ ping()->
     gen_server:call(?MODULE, {ping},infinity).
 
 %%-----------------------------------------------------------------------
-
+running_computers()->
+    gen_server:call(?MODULE, {running_computers},infinity).
+stopped_computers()->
+    gen_server:call(?MODULE, {stopped_computers},infinity).
 
 start_node(IpAddr,Port,VmId) ->
     gen_server:call(?MODULE, {start_node,IpAddr,Port,VmId},infinity).
@@ -102,11 +104,10 @@ heart_beat(Interval)->
 %% --------------------------------------------------------------------
 init([]) ->
  %   {ok,HbInterval}= application:get_env(hb_interval),
-    
+    ComputerStatus=computer:check_computers(),
+  %  io:format("~p~n",[{?MODULE,?LINE,ComputerStatus}]),
     spawn(fun()->h_beat(?HbInterval) end),
-    {ok, #state{all=[],
-		active=[],
-                passive=[]}}.
+    {ok, #state{computer_status=ComputerStatus}}.
     
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -121,6 +122,15 @@ init([]) ->
 handle_call({ping},_From,State) ->
     Reply={pong,node(),?MODULE},
     {reply, Reply, State};
+
+
+handle_call({running_computers},_From,State) ->
+    Reply=[HostId||{running,HostId}<-State#state.computer_status],
+    {reply,Reply,State};
+
+handle_call({stopped_computers},_From,State) ->
+    Reply=[HostId||{stopped,HostId}<-State#state.computer_status],
+    {reply,Reply,State};
 
 
 handle_call({start_node,IpAddr,Port,VmId},_From,State) ->
