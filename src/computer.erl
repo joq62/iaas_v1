@@ -7,9 +7,8 @@
 -module(computer). 
 
 
--export([check_computers/0,
-	 wanted_state_computers/0,
-	 check_node/2
+
+-export([check_computers/0
 	]).
 
 -define(TimeOut,3000).
@@ -59,7 +58,7 @@ map_collect(N,Acc) ->
     map_collect(N-1,NewAcc).
 
 map_reduce(CollectedResult)->		
-  check_status(CollectedResult,[]).
+  check_host_status(CollectedResult,[]).
 
 get_hostname(Parent,HostId,User,PassWd,IpAddr,Port)->
     Msg="hostname",
@@ -67,48 +66,23 @@ get_hostname(Parent,HostId,User,PassWd,IpAddr,Port)->
     Parent!{self(),{HostId,Result}}.
 
 
-check_status([],ComputerStatus)->
+check_host_status([],ComputerStatus)->
     ComputerStatus;
-check_status([{HostId,[HostId]}|T],Acc)->
-    check_status(T,[{running,HostId}|Acc]);
-
-check_status([{HostId,{error,_Err}}|T],Acc) ->
-    check_status(T,[{stopped,HostId}|Acc]).
-
-
-
-
-
-wanted_state_computers()->
-    HostId=net_adm:localhost(),
-    MnesiaVm=list_to_atom("mnesia@"++HostId),
-    MnesiaVm.
-
-check_node(_Info,TimeOut)->
-    VmId=HostId=Ip=Port=User=PassWd=TimeOut=glurk,
-    Status=case my_ssh:ssh_connect(Ip,Port,User,PassWd,TimeOut) of
-	       {ok,ConRef,_ChanId}->
-		   Vm=list_to_atom(VmId++"@"++HostId),
-		   case net_adm:ping(Vm) of
-		       {pong,Vm,vm_service}->
-			   my_ssh:close(ConRef),
-			   {running,[]};
-		       {badrpc,nodedown}->
-			   my_ssh:close(ConRef),
-			   {nodedown,[]};
-		       {badrpc,{'EXIT',{undef,Err}}}->
-			   my_ssh:close(ConRef),
-			   {unknown,{'EXIT',{undef,Err}}};
-		       Err ->
-			   {unknown,Err}
-		   end;
-	       {error,ehostunreach} ->
-		   {unknown,ehostunreach};
-	       {error,econnrefused} ->
-		   {unknown,econnrefused};
-	       {error,Err}->
-		   {unknown,Err};
-	       Error ->
-		   {unknown,Error}
+check_host_status([{HostId,[HostId]}|T],Acc)->
+    Vm10250=list_to_atom("10250"++"@"++HostId),
+    NewAcc=case net_adm:ping(Vm10250) of
+	       pong->
+		   [{running,HostId}|Acc];
+	       pang->
+		   [{available,HostId}|Acc]
 	   end,
-    Status.
+    check_host_status(T,NewAcc);
+
+check_host_status([{HostId,{error,_Err}}|T],Acc) ->
+    check_host_status(T,[{not_available,HostId}|Acc]).
+
+%% --------------------------------------------------------------------
+%% Function: 
+%% Description:
+%% Returns: non
+%% --------------------------------------------------------------------

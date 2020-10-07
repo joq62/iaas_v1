@@ -31,7 +31,7 @@
 -define(HbInterval,20*1000).
 
 
--export([running_computers/0,stopped_computers/0,
+-export([running_computers/0,available_computers/0,not_available_computers/0,
 	 start_node/3,stop_node/1,
 	 active/0,passive/0,all/0,
 	 log/0
@@ -67,8 +67,10 @@ ping()->
 %%-----------------------------------------------------------------------
 running_computers()->
     gen_server:call(?MODULE, {running_computers},infinity).
-stopped_computers()->
-    gen_server:call(?MODULE, {stopped_computers},infinity).
+available_computers()->
+    gen_server:call(?MODULE, {available_computers},infinity).
+not_available_computers()->
+    gen_server:call(?MODULE, {not_available_computers},infinity).
 
 start_node(IpAddr,Port,VmId) ->
     gen_server:call(?MODULE, {start_node,IpAddr,Port,VmId},infinity).
@@ -128,8 +130,12 @@ handle_call({running_computers},_From,State) ->
     Reply=[HostId||{running,HostId}<-State#state.computer_status],
     {reply,Reply,State};
 
-handle_call({stopped_computers},_From,State) ->
-    Reply=[HostId||{stopped,HostId}<-State#state.computer_status],
+handle_call({available_computers},_From,State) ->
+    Reply=[HostId||{available,HostId}<-State#state.computer_status],
+    {reply,Reply,State};
+
+handle_call({not_available_computers},_From,State) ->
+    Reply=[HostId||{not_available,HostId}<-State#state.computer_status],
     {reply,Reply,State};
 
 
