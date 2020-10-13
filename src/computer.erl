@@ -30,24 +30,28 @@
 %@doc, spec etc
 
 status()->
-    F1=fun get_hostname/6,
+    F1=fun get_hostname/2,
     F2=fun check_host_status/3,
 
     Computers=db_computer:read_all(),
+   % io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
     Status=mapreduce:start(F1,F2,[],Computers),
     Status.
     
    
 
 		  
-get_hostname(Parent,HostId,User,PassWd,IpAddr,Port)->
+get_hostname(Parent,{HostId,User,PassWd,IpAddr,Port})->
     Msg="hostname",
     Result=my_ssh:ssh_send(IpAddr,Port,User,PassWd,Msg,?TimeOut),
     Parent!{computer_status,{HostId,Result}}.
 
 check_host_status(computer_status,Vals,_)->
-    check_host_status(Vals,[]).
+    Result=check_host_status(Vals,[]),
+    Result.
 
+check_host_status([],Status)->
+    Status;
 check_host_status([{HostId,[HostId]}|T],Acc)->
     Vm10250=list_to_atom("10250"++"@"++HostId),
     NewAcc=case net_adm:ping(Vm10250) of

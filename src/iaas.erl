@@ -106,7 +106,7 @@ heart_beat(Interval)->
 %% --------------------------------------------------------------------
 init([]) ->
  %   {ok,HbInterval}= application:get_env(hb_interval),
-    ComputerStatus=computer:check_computers(),
+    ComputerStatus=computer:status(),
     io:format("~p~n",[{?MODULE,?LINE,ComputerStatus}]),
     spawn(fun()->h_beat(?HbInterval) end),
     {ok, #state{computer_status=ComputerStatus}}.
