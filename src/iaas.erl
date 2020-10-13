@@ -107,7 +107,7 @@ heart_beat(Interval)->
 init([]) ->
  %   {ok,HbInterval}= application:get_env(hb_interval),
     ComputerStatus=computer:check_computers(),
-  %  io:format("~p~n",[{?MODULE,?LINE,ComputerStatus}]),
+    io:format("~p~n",[{?MODULE,?LINE,ComputerStatus}]),
     spawn(fun()->h_beat(?HbInterval) end),
     {ok, #state{computer_status=ComputerStatus}}.
     
@@ -223,6 +223,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% Returns: non
 %% --------------------------------------------------------------------
 h_beat(Interval)->
+    
     timer:sleep(Interval),
     rpc:cast(node(),?MODULE,heart_beat,[Interval]).
 
