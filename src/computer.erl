@@ -8,7 +8,7 @@
 
 
 
--export([status/0,
+-export([status_computers/0,
 	 start_vms/2,start_computer/2,
 	 clean_computer/2,clean_vms/2
 	]).
@@ -29,7 +29,7 @@
 
 %@doc, spec etc
 
-status()->
+status_computers()->
     F1=fun get_hostname/2,
     F2=fun check_host_status/3,
 
@@ -157,6 +157,7 @@ start_computer(HostId,VmId)->
 			ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"erl -sname "++VmId++" -setcookie abc -detached ",2*?TimeOut),
 			Vm=list_to_atom(VmId++"@"++HostId),
 			R=check_started(500,Vm,10,{error,[Vm]}),
+			rpc:call(Vm,mnesia,start,[]),
 		%	io:format("VmId = ~p",[{VmId,?MODULE,?LINE}]),
 		%	io:format(",  ~p~n",[{R,?MODULE,?LINE}]),
 %			timer:sleep(500),

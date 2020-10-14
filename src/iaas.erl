@@ -29,7 +29,8 @@
 %% Definitions 
 %% --------------------------------------------------------------------
 -define(HbInterval,20*1000).
-
+-define(ControlVmId,"10250").
+-define(WorkerVmIds,["30000","30001","30002","30003","30004","30005","30006","30007","30008","30009"]).
 
 -export([running_computers/0,available_computers/0,not_available_computers/0,
 	 start_node/3,stop_node/1,
@@ -104,12 +105,20 @@ heart_beat(Interval)->
 %%          {stop, Reason}
 %
 %% --------------------------------------------------------------------
+
+% To be removed
+-define(TEXTFILE,"./test_src/dbase_init.hrl").
+
 init([]) ->
- %   {ok,HbInterval}= application:get_env(hb_interval),
-    ComputerStatus=computer:status(),
-    io:format("~p~n",[{?MODULE,?LINE,ComputerStatus}]),
+ 
+    ssh:start(),
+    ok=application:start(dbase_service),
+    % To be removed
+  %  dbase_service:load_textfile(?TEXTFILE),
+  %  timer:sleep(1000),
+
     spawn(fun()->h_beat(?HbInterval) end),
-    {ok, #state{computer_status=ComputerStatus}}.
+    {ok, #state{computer_status=[]}}.
     
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -223,7 +232,32 @@ code_change(_OldVsn, State, _Extra) ->
 %% Returns: non
 %% --------------------------------------------------------------------
 h_beat(Interval)->
-    
+    ComputerStatus=computer:status_computers(),
+    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
+    AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
+
+    io:format("VmsActualState ~p~n",[{?MODULE,?LINE}]),
+    io:format("Clean and Start missing Vms ~p~n",[{?MODULE,?LINE}]),
+
+    io:format("~p~n",[{?MODULE,?LINE,
+		       [computer:clean_computer(HostId,?ControlVmId)||HostId<-AvailableComputers]}]),
+    io:format("~p~n",[{?MODULE,?LINE,
+		       [computer:start_computer(HostId,?ControlVmId)||HostId<-AvailableComputers]}]),  
+    io:format("~p~n",[{?MODULE,?LINE,
+		     [computer:clean_vms(?WorkerVmIds,HostId)||HostId<-AvailableComputers]}]),
+    io:format("~p~n",[{?MODULE,?LINE,
+		     [computer:start_vms(?WorkerVmIds,HostId)||HostId<-AvailableComputers]}]),
+  
+
+    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,ComputerStatus}]),
+
+    io:format("VmsActualState ~p~n",[{?MODULE,?LINE}]),
+
+    io:format("Clean and Start missing Vms ~p~n",[{?MODULE,?LINE}]),
+
+    io:format("VmsActualState ~p~n",[{?MODULE,?LINE}]),
+
+
     timer:sleep(Interval),
     rpc:cast(node(),?MODULE,heart_beat,[Interval]).
 
