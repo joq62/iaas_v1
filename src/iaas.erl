@@ -114,8 +114,8 @@ init([]) ->
     ssh:start(),
     ok=application:start(dbase_service),
     % To be removed
-  %  dbase_service:load_textfile(?TEXTFILE),
-  %  timer:sleep(1000),
+    dbase_service:load_textfile(?TEXTFILE),
+    timer:sleep(1000),
 
     spawn(fun()->h_beat(?HbInterval) end),
     {ok, #state{computer_status=[]}}.
@@ -238,15 +238,20 @@ h_beat(Interval)->
 
     io:format("VmsActualState ~p~n",[{?MODULE,?LINE}]),
     io:format("Clean and Start missing Vms ~p~n",[{?MODULE,?LINE}]),
+    
+    [ControlVmId]=db_vm_id:read(controller),
+    io:format("ControlVmId ~p~n",[{?MODULE,?LINE,ControlVmId}]),
+    WorkerVmIds=db_vm_id:read(workers),
+    io:format("WorkerVmIds ~p~n",[{?MODULE,?LINE,WorkerVmIds}]),
 
     io:format("~p~n",[{?MODULE,?LINE,
-		       [computer:clean_computer(HostId,?ControlVmId)||HostId<-AvailableComputers]}]),
+		       [computer:clean_computer(HostId,ControlVmId)||HostId<-AvailableComputers]}]),
     io:format("~p~n",[{?MODULE,?LINE,
-		       [computer:start_computer(HostId,?ControlVmId)||HostId<-AvailableComputers]}]),  
+		       [computer:start_computer(HostId,ControlVmId)||HostId<-AvailableComputers]}]),  
     io:format("~p~n",[{?MODULE,?LINE,
-		     [computer:clean_vms(?WorkerVmIds,HostId)||HostId<-AvailableComputers]}]),
+		     [computer:clean_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers]}]),
     io:format("~p~n",[{?MODULE,?LINE,
-		     [computer:start_vms(?WorkerVmIds,HostId)||HostId<-AvailableComputers]}]),
+		     [computer:start_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers]}]),
   
 
     io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,ComputerStatus}]),
