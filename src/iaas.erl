@@ -21,7 +21,7 @@
 %% Key Data structures
 %% 
 %% --------------------------------------------------------------------
--record(state, {computer_status}).
+-record(state, {computer_status,vm_status}).
 
 
 
@@ -88,8 +88,8 @@ log()->
     gen_server:call(?MODULE, {log},infinity).
 %%----------------------------------------------------------------------
 
-heart_beat(Interval)->
-    gen_server:cast(?MODULE, {heart_beat,Interval}).
+heart_beat({Interval,ComputerStatus,VmStatus})->
+    gen_server:cast(?MODULE, {heart_beat,{Interval,ComputerStatus,VmStatus}}).
 
 
 %% ====================================================================
@@ -133,7 +133,6 @@ init([]) ->
 handle_call({ping},_From,State) ->
     Reply={pong,node(),?MODULE},
     {reply, Reply, State};
-
 
 handle_call({running_computers},_From,State) ->
     Reply=[HostId||{running,HostId}<-State#state.computer_status],
@@ -186,9 +185,12 @@ handle_call(Request, From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% -------------------------------------------------------------------
-handle_cast({heart_beat,Interval}, State) ->
+handle_cast({heart_beat,{Interval,ComputerStatus,VmStatus}}, State) ->
+    io:format("ComputerStatus ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
+    io:format("VmStatus ~p~n",[{?MODULE,?LINE,time(),VmStatus}]),
+    NewState=State#state{computer_status=ComputerStatus,vm_status=VmStatus},
     spawn(fun()->h_beat(Interval) end),    
-    {noreply, State};
+    {noreply, NewState};
 			     
 handle_cast(Msg, State) ->
     io:format("unmatched match cast ~p~n",[{?MODULE,?LINE,Msg}]),
@@ -232,11 +234,12 @@ code_change(_OldVsn, State, _Extra) ->
 %% Returns: non
 %% --------------------------------------------------------------------
 h_beat(Interval)->
+    timer:sleep(Interval),
     io:format(" *************** "),
     io:format(" ~p",[{time()}]),
     io:format(" *************** ~n"),
     ComputerStatus=computer:status_computers(),
-    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
+%    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
     AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
     
     [ControlVmId]=db_vm_id:read(controller),
@@ -258,26 +261,22 @@ h_beat(Interval)->
   
     RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
     VmStatus=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
-    io:format("VmStatus ~p~n",[{?MODULE,?LINE,VmStatus}]),
+ %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,VmStatus}]),
 
     CleanVms2=[computer:clean_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
-    io:format("CleanVms2 ~p~n",[{?MODULE,?LINE,CleanVms2 }]),
+%    io:format("CleanVms2 ~p~n",[{?MODULE,?LINE,CleanVms2 }]),
 
     StartVms2=[computer:start_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
-    io:format("StartVms2 ~p~n",[{?MODULE,?LINE,StartVms2}]),
+%    io:format("StartVms2 ~p~n",[{?MODULE,?LINE,StartVms2}]),
+    
+    
+    ComputerStatus2=computer:status_computers(),
+    VmStatus2=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
 
 
-  %  io:format("VmsActualState ~p~n",[{?MODULE,?LINE}]),
+    rpc:cast(node(),?MODULE,heart_beat,[{Interval,ComputerStatus2,VmStatus2}]).
 
-   % io:format("Clean and Start missing Vms ~p~n",[{?MODULE,?LINE}]),
-
-    %io:format("VmsActualState ~p~n",[{?MODULE,?LINE}]),
-
-
-    timer:sleep(Interval),
-    rpc:cast(node(),?MODULE,heart_beat,[Interval]).
-
-%% --------------------------------------------------------------------WorkerVmIds
+%% --------------------------------------------------------------------
 %% Internal functions
 %% --------------------------------------------------------------------
 
