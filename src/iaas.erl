@@ -32,7 +32,7 @@
 -define(ControlVmId,"10250").
 -define(WorkerVmIds,["30000","30001","30002","30003","30004","30005","30006","30007","30008","30009"]).
 
--export([running_computers/0,available_computers/0,not_available_computers/0,
+-export([vm_status/1,computer_status/1,
 	 start_node/3,stop_node/1,
 	 active/0,passive/0,all/0,
 	 log/0
@@ -66,12 +66,11 @@ ping()->
     gen_server:call(?MODULE, {ping},infinity).
 
 %%-----------------------------------------------------------------------
-running_computers()->
-    gen_server:call(?MODULE, {running_computers},infinity).
-available_computers()->
-    gen_server:call(?MODULE, {available_computers},infinity).
-not_available_computers()->
-    gen_server:call(?MODULE, {not_available_computers},infinity).
+vm_status(Type)->
+    gen_server:call(?MODULE, {vm_status,Type},infinity).
+computer_status(Type)->
+    gen_server:call(?MODULE, {computer_status,Type},infinity).
+
 
 start_node(IpAddr,Port,VmId) ->
     gen_server:call(?MODULE, {start_node,IpAddr,Port,VmId},infinity).
@@ -118,7 +117,7 @@ init([]) ->
     timer:sleep(1000),
 
     spawn(fun()->h_beat(?HbInterval) end),
-    {ok, #state{computer_status=[]}}.
+    {ok, #state{computer_status=[],vm_status=[]}}.
     
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -134,18 +133,40 @@ handle_call({ping},_From,State) ->
     Reply={pong,node(),?MODULE},
     {reply, Reply, State};
 
-handle_call({running_computers},_From,State) ->
-    Reply=[HostId||{running,HostId}<-State#state.computer_status],
+handle_call({vm_status,Type},_From,State) ->
+    Reply= case Type of
+	       running->
+		   [{HostId,R}||{HostId,
+			    {running,R},
+			    {available,_A},
+			    {not_available,_NA}}<-State#state.vm_status];
+	       available->
+		   [{HostId,A}||{HostId,
+				 {running,_R},
+				 {available,A},
+				 {not_available,_NA}}<-State#state.vm_status];
+	       not_available->
+		   [{HostId,NA}||{HostId,
+				 {running,_R},
+				 {available,_A},
+				 {not_available,NA}}<-State#state.vm_status];
+	       Err->
+		   {error,[edefined,Err]}
+	   end,
     {reply,Reply,State};
 
-handle_call({available_computers},_From,State) ->
-    Reply=[HostId||{available,HostId}<-State#state.computer_status],
+handle_call({computer_status,Type},_From,State) ->
+    Reply= case Type of
+	       running->
+		   [HostId||{running,HostId}<-State#state.computer_status];
+	       available->
+		   [HostId||{available,HostId}<-State#state.computer_status];
+	       not_available->
+		   [HostId||{not_available,HostId}<-State#state.computer_status];
+	       Err->
+		   {error,[edefined,Err]}
+	   end,
     {reply,Reply,State};
-
-handle_call({not_available_computers},_From,State) ->
-    Reply=[HostId||{not_available,HostId}<-State#state.computer_status],
-    {reply,Reply,State};
-
 
 handle_call({start_node,IpAddr,Port,VmId},_From,State) ->
     Reply={not_implemented,start_node,IpAddr,Port,VmId},
@@ -235,9 +256,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 h_beat(Interval)->
     timer:sleep(Interval),
-    io:format(" *************** "),
-    io:format(" ~p",[{time()}]),
-    io:format(" *************** ~n"),
+ %   io:format(" *************** "),
+ %   io:format(" ~p",[{time()}]),
+ %   io:format(" *************** ~n"),
     ComputerStatus=computer:status_computers(),
 %    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
     AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
@@ -247,26 +268,26 @@ h_beat(Interval)->
     WorkerVmIds=db_vm_id:read(worker),
 %    io:format("WorkerVmIds ~p~n",[{?MODULE,?LINE,WorkerVmIds}]),
 
-    CleanComputers=[computer:clean_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
+    _CleanComputers=[computer:clean_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
 %    io:format("CleanComputers ~p~n",[{?MODULE,?LINE,CleanComputers}]),
 
-    StartComputers=[computer:start_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
+    _StartComputers=[computer:start_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
  %   io:format("StartComputers ~p~n",[{?MODULE,?LINE,StartComputers}]),  
 
-    CleanVms=[computer:clean_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
+    _CleanVms=[computer:clean_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
   %  io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
 
-    StartVms=[computer:start_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
+    _StartVms=[computer:start_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
  %   io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
   
     RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
     VmStatus=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
  %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,VmStatus}]),
 
-    CleanVms2=[computer:clean_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
+    _CleanVms2=[computer:clean_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
 %    io:format("CleanVms2 ~p~n",[{?MODULE,?LINE,CleanVms2 }]),
 
-    StartVms2=[computer:start_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
+    _StartVms2=[computer:start_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
 %    io:format("StartVms2 ~p~n",[{?MODULE,?LINE,StartVms2}]),
     
     
