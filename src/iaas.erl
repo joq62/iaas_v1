@@ -21,7 +21,13 @@
 %% Key Data structures
 %% 
 %% --------------------------------------------------------------------
--record(state, {computer_status,vm_status}).
+-record(state, {computer_running,
+		computer_available,
+		computer_not_available,
+		vms_running,
+		vms_available,
+		vms_not_available,
+		vm_candidates}).
 
 
 
@@ -35,6 +41,7 @@
 -export([vm_status/1,computer_status/1,
 	 start_node/3,stop_node/1,
 	 active/0,passive/0,all/0,
+	 get_vm/0,get_vm/2,get_all_vms/0,
 	 log/0
 	]).
 
@@ -71,7 +78,15 @@ vm_status(Type)->
 computer_status(Type)->
     gen_server:call(?MODULE, {computer_status,Type},infinity).
 
+get_vm()->
+    gen_server:call(?MODULE, {get_vm},infinity).
+get_vm(Restrictions,HostIds)->
+    gen_server:call(?MODULE, {get_vm,Restrictions,HostIds},infinity).
+get_all_vms()->
+    gen_server:call(?MODULE, {get_all_vms},infinity).
+    
 
+    
 start_node(IpAddr,Port,VmId) ->
     gen_server:call(?MODULE, {start_node,IpAddr,Port,VmId},infinity).
 stop_node(Vm) ->
@@ -109,7 +124,6 @@ heart_beat({Interval,ComputerStatus,VmStatus})->
 -define(TEXTFILE,"./test_src/dbase_init.hrl").
 
 init([]) ->
- 
     ssh:start(),
     ok=application:start(dbase_service),
     % To be removed
@@ -117,7 +131,13 @@ init([]) ->
     timer:sleep(1000),
 
     spawn(fun()->h_beat(?HbInterval) end),
-    {ok, #state{computer_status=[],vm_status=[]}}.
+    {ok, #state{computer_running=[],
+		computer_available=[],
+		computer_not_available=[],
+		vms_running=[],
+		vms_available=[],
+		vms_not_available=[],
+		vm_candidates=[]}}.
     
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -133,23 +153,61 @@ handle_call({ping},_From,State) ->
     Reply={pong,node(),?MODULE},
     {reply, Reply, State};
 
+
+handle_call({get_all_vms},_From,State) ->
+    Reply=State#state.vm_candidates,
+    {reply, Reply, State};
+
+handle_call({get_vm},_From,State) ->
+    Reply=case State#state.vm_candidates of
+	      []->
+		  NewState=State,
+		  {error,[no_vms_running]};
+	      [{HostId,VmId}|T]->
+		  NewState=State#state{vm_candidates=lists:append(T,[{HostId,VmId}])},
+		  {ok,{HostId,VmId,list_to_atom(VmId++"@"++HostId)}}
+	  end,
+    	  
+    {reply, Reply, NewState};
+handle_call({get_vm,Restriction,HostIds},_From,State) ->
+    
+    Reply=case Restriction of
+	      not_from->
+		  case [{XHostId,XVmId}||{XHostId,XVmId}<-State#state.vm_candidates,
+					 false==lists:member(XHostId,HostIds)] of
+		      []->		
+			  NewState=State,	  
+			  {error,[no_vms_running]};
+		      [{YHostId,YVmId}|_]->
+			  X=lists:delete({YHostId,YVmId},State#state.vm_candidates),
+			  NewState=State#state{vm_candidates=lists:append(X,[{YHostId,YVmId}])},
+			  {ok,{YHostId,YVmId,list_to_atom(YVmId++"@"++YHostId)}}
+		  end;
+	      from ->
+		  case [{XHostId,XVmId}||{XHostId,XVmId}<-State#state.vm_candidates,
+					 true==lists:member(XHostId,HostIds)] of
+		      []->		
+			  NewState=State,	  
+			  {error,[no_vms_running]};
+		      [{YHostId,YVmId}|_]->
+			  X=lists:delete({YHostId,YVmId},State#state.vm_candidates),
+			  NewState=State#state{vm_candidates=lists:append(X,[{YHostId,YVmId}])},
+			  {ok,{YHostId,YVmId,list_to_atom(YVmId++"@"++YHostId)}}
+		  end;
+	      Err->
+		  NewState=State,
+		  {error,[eexists,Err]}
+	  end,  
+    {reply, Reply, NewState};
+
 handle_call({vm_status,Type},_From,State) ->
     Reply= case Type of
 	       running->
-		   [{HostId,R}||{HostId,
-			    {running,R},
-			    {available,_A},
-			    {not_available,_NA}}<-State#state.vm_status];
+		   State#state.vms_running;
 	       available->
-		   [{HostId,A}||{HostId,
-				 {running,_R},
-				 {available,A},
-				 {not_available,_NA}}<-State#state.vm_status];
+		   State#state.vms_available;
 	       not_available->
-		   [{HostId,NA}||{HostId,
-				 {running,_R},
-				 {available,_A},
-				 {not_available,NA}}<-State#state.vm_status];
+		   State#state.vms_not_available;
 	       Err->
 		   {error,[edefined,Err]}
 	   end,
@@ -158,11 +216,11 @@ handle_call({vm_status,Type},_From,State) ->
 handle_call({computer_status,Type},_From,State) ->
     Reply= case Type of
 	       running->
-		   [HostId||{running,HostId}<-State#state.computer_status];
+		   State#state.computer_running;
 	       available->
-		   [HostId||{available,HostId}<-State#state.computer_status];
+		   State#state.computer_available;
 	       not_available->
-		   [HostId||{not_available,HostId}<-State#state.computer_status];
+		   State#state.computer_not_available;
 	       Err->
 		   {error,[edefined,Err]}
 	   end,
@@ -207,9 +265,25 @@ handle_call(Request, From, State) ->
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% -------------------------------------------------------------------
 handle_cast({heart_beat,{Interval,ComputerStatus,VmStatus}}, State) ->
-    io:format("ComputerStatus ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
-    io:format("VmStatus ~p~n",[{?MODULE,?LINE,time(),VmStatus}]),
-    NewState=State#state{computer_status=ComputerStatus,vm_status=VmStatus},
+ %   io:format("ComputerStatus ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
+ %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,time(),VmStatus}]),
+    RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
+    AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
+    NotAvailableComputers=[HostId||{not_available,HostId}<-ComputerStatus],
+
+    RunningVms=vms:vm_status(VmStatus,running),
+    AvailableVms=vms:vm_status(VmStatus,available),
+    NotAvailableVms=vms:vm_status(VmStatus,not_available),
+
+    NewVmCandidates=vms:candidates(State#state.vm_candidates,RunningVms),
+    NewState=State#state{computer_running=RunningComputers,
+			 computer_available=AvailableComputers,
+			 computer_not_available=NotAvailableComputers,
+			 vms_running=RunningVms,
+			 vms_available=AvailableVms,
+			 vms_not_available=NotAvailableVms,
+			 vm_candidates=NewVmCandidates},
+ 
     spawn(fun()->h_beat(Interval) end),    
     {noreply, NewState};
 			     
@@ -262,7 +336,8 @@ h_beat(Interval)->
     ComputerStatus=computer:status_computers(),
 %    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
     AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
-    
+ %   io:format("AvailableComputers ~p~n",[{?MODULE,?LINE,AvailableComputers}]),
+ 
     [ControlVmId]=db_vm_id:read(controller),
 %    io:format("ControlVmId ~p~n",[{?MODULE,?LINE,ControlVmId}]),
     WorkerVmIds=db_vm_id:read(worker),

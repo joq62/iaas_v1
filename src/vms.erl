@@ -8,7 +8,8 @@
 
 
 
--export([status_vms/2,
+-export([vm_status/2,
+	 status_vms/2,
 	 candidates/2
 	]).
 
@@ -17,6 +18,27 @@
 %% External functions
 %% ====================================================================
 
+vm_status(VmStatus,Type)->
+    Reply= case Type of
+	       running->
+		   [{HostId,R}||{HostId,
+				 {running,R},
+				 {available,_A},
+				 {not_available,_NA}}<-VmStatus];
+	       available->
+		   [{HostId,A}||{HostId,
+				 {running,_R},
+				 {available,A},
+				 {not_available,_NA}}<-VmStatus];
+	       not_available->
+		   [{HostId,NA}||{HostId,
+				 {running,_R},
+				  {available,_A},
+				 {not_available,NA}}<-VmStatus];
+	       Err->
+		   {error,[edefined,Err]}
+	   end,
+    Reply.
 % --------------------------------------------------------------------
 %% Function:start/0 
 %% Description: Initiate the eunit tests, set upp needed processes etc
@@ -28,9 +50,15 @@
 % 
 %
 candidates(CandidateList,RunningVms)->
+ %   io:format( "CandidateList : ~p~n",[{?MODULE,?LINE,CandidateList}]), 
     R =x1(RunningVms,[]),
-    R.
-
+    AddToCandidateList=[{HostId,VmId}||{HostId,VmId}<-R,
+				       false==lists:member({HostId,VmId},CandidateList)],
+    L2=[{HostId,VmId}||{HostId,VmId}<-CandidateList,
+		       lists:member({HostId,VmId},R)],
+    NewCandidateList=lists:append(AddToCandidateList,L2),
+ %  io:format( "NewCandidateList : ~p~n",[{?MODULE,?LINE,NewCandidateList}]), 
+    NewCandidateList.
 x1([],R)->
     R;
 x1(L,Acc)->
@@ -66,7 +94,7 @@ x2([{HostId,VmId}|T],Acc)->
 get_candidate()->
     ok.
 
-get_candidate(HostIdList)->
+get_candidate(_HostIdList)->
     ok.
 % --------------------------------------------------------------------
 %% Function:start/0 
