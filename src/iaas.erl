@@ -124,11 +124,11 @@ heart_beat({Interval,ComputerStatus,VmStatus})->
 -define(TEXTFILE,"./test_src/dbase_init.hrl").
 
 init([]) ->
-    ssh:start(),
-    ok=application:start(dbase_service),
+%    ssh:start(),
+%    ok=application:start(dbase_service),
     % To be removed
-    dbase_service:load_textfile(?TEXTFILE),
-    timer:sleep(1000),
+%    dbase_service:load_textfile(?TEXTFILE),
+ %   timer:sleep(1000),
 
     spawn(fun()->h_beat(?HbInterval) end),
     {ok, #state{computer_running=[],
@@ -267,6 +267,7 @@ handle_call(Request, From, State) ->
 handle_cast({heart_beat,{Interval,ComputerStatus,VmStatus}}, State) ->
  %   io:format("ComputerStatus ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
  %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,time(),VmStatus}]),
+ %   io:format("h_beat ~p~n",[{time(),?MODULE,?LINE}]),
     RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
     AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
     NotAvailableComputers=[HostId||{not_available,HostId}<-ComputerStatus],

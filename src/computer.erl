@@ -72,9 +72,9 @@ check_host_status([{HostId,{error,_Err}}|T],Acc) ->
 clean_vms(VmIds,HostId)->
     F1=fun clean_node/2,
     F2=fun clean_node_result/3,
- %   io:format("HostId,VmIds ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
-    L=[{XHostId,XVmId}||{XHostId,XVmId}<-VmIds],
- %   io:format("L  ~p~n",[{?MODULE,?LINE,L}]),
+%    io:format("HostId,VmIds ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
+    L=[{HostId,XVmId}||XVmId<-VmIds],
+%    io:format("L  ~p~n",[{?MODULE,?LINE,L}]),
     ResultNodeStart=mapreduce:start(F1,F2,[],L),
     ResultNodeStart.
 
@@ -87,7 +87,7 @@ clean_node(Parent,{HostId,VmId})->
 	       _->
 						%	    ok=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
 						%			file,del_dir_r,[VmId]),
-	%	   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
+%		   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
 		   rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
 			      os,cmd,["rm -rf "++VmId]),
 		   R=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),filelib,is_dir,[VmId]),
@@ -124,8 +124,8 @@ clean_computer(HostId,VmId)->
 start_vms(VmIds,HostId)->
     F1=fun start_node/2,
     F2=fun start_node_result/3,
-    L=[{XHostId,XVmId}||{XHostId,XVmId}<-VmIds],
-%    L=[{HostId,VmId}||VmId<-VmIds],
+%    L=[{XHostId,XVmId}||XVmId<-VmIds],
+    L=[{HostId,VmId}||VmId<-VmIds],
     ResultNodeStart=mapreduce:start(F1,F2,[],L),
     ResultNodeStart.
 
