@@ -13,10 +13,10 @@
 
 -record(vm,
 	{
+	  vm,
 	  host_id,
 	  vm_id,
 	  type,
-	  vm,
 	  status
 	}).
 
@@ -29,26 +29,26 @@
 host_id(Key)->
     Z=do(qlc:q([X || X <- mnesia:table(?TABLE),
 		     X#?RECORD.host_id==Key])),
-    [{HostId,VmId,Type,Vm,Status}||{?RECORD,HostId,VmId,Type,Vm,Status}<-Z].
+    [{Vm,HostId,VmId,Type,Status}||{?RECORD,Vm,HostId,VmId,Type,Status}<-Z].
 type(Key)->
     Z=do(qlc:q([X || X <- mnesia:table(?TABLE),
 		     X#?RECORD.type==Key])),
-    [{HostId,VmId,Type,Vm,Status}||{?RECORD,HostId,VmId,Type,Vm,Status}<-Z].  
+    [{Vm,HostId,VmId,Type,Status}||{?RECORD,Vm,HostId,VmId,Type,Status}<-Z].  
 status(Key)->
     Z=do(qlc:q([X || X <- mnesia:table(?TABLE),
 		     X#?RECORD.status==Key])),
-    [{HostId,VmId,Type,Vm,Status}||{?RECORD,HostId,VmId,Type,Vm,Status}<-Z].  
+    [{Vm,HostId,VmId,Type,Status}||{?RECORD,Vm,HostId,VmId,Type,Status}<-Z].  
 
 create_table()->
-    mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)},
-				{type,bag}]),
+    mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)}]),
     mnesia:wait_for_tables([?TABLE], 20000).
 
-create(HostId,VmId,Type,Vm,Status)->
-    Record=#vm{host_id=HostId,
-	       vm_id=VmId,
+create(Vm,HostId,VmId,Type,Status)->
+    Record=#vm{
+	      vm=Vm,
+	      host_id=HostId,
+	      vm_id=VmId,
 	       type=Type,
-	       vm=Vm,
 	       status=Status
 	      },
     F = fun() -> mnesia:write(Record) end,
@@ -56,7 +56,7 @@ create(HostId,VmId,Type,Vm,Status)->
 
 read_all() ->
     Z=do(qlc:q([X || X <- mnesia:table(?TABLE)])),
-    [{HostId,VmId,Type,Vm,Status}||{?RECORD,HostId,VmId,Type,Vm,Status}<-Z].
+    [{Vm,HostId,VmId,Type,Status}||{?RECORD,Vm,HostId,VmId,Type,Status}<-Z].
 
 
 
@@ -69,15 +69,14 @@ read(Type) ->
 
 
 update(Vm,NewStatus)->
-  %  io:format("~p~n",[{?MODULE,?LINE,HostId,NewStatus}]),
     F = fun() ->
-		case [X || X <- mnesia:table(?TABLE),
-			   X#?RECORD.vm==Vm] of
+		RecordList=mnesia:read(?TABLE,Vm), 
+		case RecordList of
 		    []->
 						% HostId not define
 			mnesia:abort(?TABLE);
-		    [VmRecord]->
-			Oid = {?TABLE, VmRecord#vm.host_id},
+		   [VmRecord]->
+			Oid = {?TABLE,Vm},
 			mnesia:delete(Oid),		
 			Record =VmRecord#?RECORD{status=NewStatus},
 			mnesia:write(Record)
@@ -85,8 +84,8 @@ update(Vm,NewStatus)->
 	end,
     mnesia:transaction(F).
 
-delete(Type) ->
-    Oid = {?TABLE,Type},
+delete(Vm) ->
+    Oid = {?TABLE,Vm},
     F = fun() -> mnesia:delete(Oid) end,
   mnesia:transaction(F).
 
