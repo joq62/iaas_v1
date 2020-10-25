@@ -5,9 +5,9 @@
 
 -include_lib("stdlib/include/qlc.hrl").
 -export([create_table/0,
-	 create/1,delete/1,
+	 create/6,delete/1,
 	 read_all/0, read/1,
-	 update/5	   
+	 update/2	   
 	]).
 
 -record(computer,
@@ -16,17 +16,26 @@
 	  ssh_uid,
 	  ssh_passwd,
 	  ip_addr,
-	  port
+	  port,
+	  status
 	}).
 
 -define(TABLE,computer).
 -define(RECORD,computer).
 
+% Add create_table with disc nodes
 create_table()->
     mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)}]),
-    mnesia:wait_for_tables(?TABLE, 20000).
+    mnesia:wait_for_tables([?TABLE], 20000).
 
-create(Record) ->
+create(HostId,SshId,SshPwd,IpAddr,Port,Status) ->
+    Record=#computer{host_id=HostId,
+		     ssh_uid=SshId,
+		     ssh_passwd=SshPwd,
+		     ip_addr=IpAddr,
+		     port=Port,
+		     status=Status
+		    },
     F = fun() -> mnesia:write(Record) end,
     mnesia:transaction(F).
 
@@ -39,16 +48,22 @@ read_all() ->
 read(HostId) ->
     Z=do(qlc:q([X || X <- mnesia:table(?TABLE),
 		     X#?RECORD.host_id==HostId])),
-    [{Id,SshUid,SshPassWd,IpAddr,Port}||{?RECORD,Id,SshUid,SshPassWd,IpAddr,Port}<-Z].
+    [{Id,SshUid,SshPassWd,IpAddr,Port,Status}||{?RECORD,Id,SshUid,SshPassWd,IpAddr,Port,Status}<-Z].
 
 
-update(HostId,SshId,SshPwd,IpAddr,Port)->
+update(HostId,NewStatus)->
+  %  io:format("~p~n",[{?MODULE,?LINE,HostId,NewStatus}]),
     F = fun() ->
-		Oid = {?TABLE, HostId},
-		mnesia:delete(Oid),
-		Record = #?RECORD{host_id=HostId,ssh_uid=SshId,ssh_passwd=SshPwd,
-				  ip_addr=IpAddr,port=Port},
-		mnesia:write(Record)
+		    case mnesia:read(?TABLE,HostId) of
+		    []->
+						% HostId not define
+			mnesia:abort(?TABLE);
+		    [ComputerRecord]->
+			Oid = {?TABLE, HostId},
+			mnesia:delete(Oid),		
+			Record =ComputerRecord#?RECORD{status=NewStatus},
+			mnesia:write(Record)
+		end
 	end,
     mnesia:transaction(F).
 

@@ -8,7 +8,9 @@
 
 
 
--export([status_computers/0,
+-export([is_wanted/0,
+	 check_status/0,
+	 status_computers/0,
 	 start_vms/2,start_computer/2,
 	 clean_computer/2,clean_vms/2
 	]).
@@ -20,7 +22,22 @@
 %% ====================================================================
 %% External functions
 %% ====================================================================
+% --------------------------------------------------------------------
+%% Function:start/0 
+%% Description: Initiate the eunit tests, set upp needed processes etc
+%% Returns: non
+%% --------------------------------------------------------------------
+check_status()->
+    
+    ok.
 
+% --------------------------------------------------------------------
+%% Function:start/0 
+%% Description: Initiate the eunit tests, set upp needed processes etc
+%% Returns: non
+%% --------------------------------------------------------------------
+is_wanted()->
+    ok.
 % --------------------------------------------------------------------
 %% Function:start/0 
 %% Description: Initiate the eunit tests, set upp needed processes etc
