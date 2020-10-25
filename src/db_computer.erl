@@ -5,9 +5,11 @@
 
 -include_lib("stdlib/include/qlc.hrl").
 -export([create_table/0,
+	 create_table/1,
 	 create/6,delete/1,
 	 read_all/0, read/1,
-	 update/2	   
+	 update/2,
+	 status/1   
 	]).
 
 -record(computer,
@@ -24,9 +26,21 @@
 -define(RECORD,computer).
 
 % Add create_table with disc nodes
+status(Key)->
+    Z=do(qlc:q([X || X <- mnesia:table(?TABLE),
+		     X#?RECORD.status==Key])),
+    [{HostId,Status}||{?RECORD,HostId,_SshUid,_SshPassWd,_IpAddr,_Port,Status}<-Z].
+
+
 create_table()->
     mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)}]),
     mnesia:wait_for_tables([?TABLE], 20000).
+create_table(NodeList)->
+    mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)},
+				 {disc_copies,NodeList}]),
+    mnesia:wait_for_tables([?TABLE], 20000).
+
+ 
 
 create(HostId,SshId,SshPwd,IpAddr,Port,Status) ->
     Record=#computer{host_id=HostId,
@@ -41,7 +55,7 @@ create(HostId,SshId,SshPwd,IpAddr,Port,Status) ->
 
 read_all() ->
     Z=do(qlc:q([X || X <- mnesia:table(?TABLE)])),
-    [{HostId,SshUid,SshPassWd,IpAddr,Port}||{?RECORD,HostId,SshUid,SshPassWd,IpAddr,Port}<-Z].
+    [{HostId,SshUid,SshPassWd,IpAddr,Port,Status}||{?RECORD,HostId,SshUid,SshPassWd,IpAddr,Port,Status}<-Z].
 
 
 

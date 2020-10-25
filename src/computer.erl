@@ -12,7 +12,8 @@
 	 check_status/0,
 	 status_computers/0,
 	 start_vms/2,start_computer/2,
-	 clean_computer/2,clean_vms/2
+	 clean_computer/1,clean_computer/2,
+	 clean_vms/2
 	]).
 
 -define(ControlVmId,"10250").
@@ -51,14 +52,14 @@ status_computers()->
     F2=fun check_host_status/3,
 
     Computers=db_computer:read_all(),
-   % io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
+%    io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
     Status=mapreduce:start(F1,F2,[],Computers),
     Status.
     
    
 
 		  
-get_hostname(Parent,{HostId,User,PassWd,IpAddr,Port})->
+get_hostname(Parent,{HostId,User,PassWd,IpAddr,Port,_Status})->
     Msg="hostname",
     Result=my_ssh:ssh_send(IpAddr,Port,User,PassWd,Msg,?TimeOut),
     Parent!{computer_status,{HostId,Result}}.
@@ -120,6 +121,40 @@ clean_node(Parent,{HostId,VmId})->
 clean_node_result(_Key,Vals,_)->		
     Vals.
 
+% --------------------------------------------------------------------
+%% Function:start/0 
+%% Description: Initiate the eunit tests, set upp needed processes etc
+%% Returns: non
+%% --------------------------------------------------------------------
+clean_computer(HostId)->
+
+% [{'30000@asus',"asus","30000",controller,not_available}]=db_vm:host_id(HostId),
+% [{"asus","pi","festum01","192.168.0.100",60110,not_available}]=db_computer:read(HostId)),
+   
+    Result=case db_computer:read(HostId) of
+	       []->
+		   {error,[eexists,HostId]};
+	       [{HostId,User,PassWd,IpAddr,Port,_ComputerStatus}]->
+		   case db_vm:host_id(HostId) of
+		       []->
+			   {error,[eexists_vms,HostId]};
+		       VmIdList->
+			   do_clean(VmIdList,HostId,User,PassWd,IpAddr,Port)			       
+						%io:format("VmId = ~p",[{VmId,?MODULE,?LINE}])
+		   end
+	   end,
+    Result.
+do_clean([],_,_,_,_,_)->
+    ok;
+do_clean([{Vm,_HostId,VmId,_Type,_VmStatus}|T],HostId,User,PassWd,IpAddr,Port)->
+    rpc:call(Vm,init,stop,[],5000),
+    ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut),
+    do_clean(T,HostId,User,PassWd,IpAddr,Port).
+% --------------------------------------------------------------------
+%% Function:start/0 
+%% Description: Initiate the eunit tests, set upp needed processes etc
+%% Returns: non
+%% --------------------------------------------------------------------
 clean_computer(HostId,VmId)->
     % Read computer info 
     Result=case db_computer:read(HostId) of

@@ -4,7 +4,8 @@
 %-compile(export_all).
 
 -include_lib("stdlib/include/qlc.hrl").
--export([create_table/0,
+-export([create_table/0,	 
+	 create_table/1,
 	 create/5,delete/1,
 	 read_all/0, read/1,
 	 update/2,
@@ -42,6 +43,11 @@ status(Key)->
 create_table()->
     mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)}]),
     mnesia:wait_for_tables([?TABLE], 20000).
+create_table(NodeList)->
+    mnesia:create_table(?TABLE, [{attributes, record_info(fields, ?RECORD)},
+				 {disc_copies,NodeList}]),
+    mnesia:wait_for_tables([?TABLE], 20000).
+
 
 create(Vm,HostId,VmId,Type,Status)->
     Record=#vm{

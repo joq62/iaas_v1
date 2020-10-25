@@ -45,6 +45,10 @@ start()->
     ?assertEqual(ok,db_vm_test:start()),
     ?debugMsg("Stop db_vm_test "),
 
+    ?debugMsg("Start iaas function test "),
+    ?assertEqual(ok,iaas_function_test:start()),
+    ?debugMsg("Stop db_vm_test "),
+
     ?debugMsg("Start stop_test_system:start"),
     %% End application tests
     cleanup(),

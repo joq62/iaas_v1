@@ -268,27 +268,25 @@ handle_cast({heart_beat,{Interval,ComputerStatus,VmStatus}}, State) ->
  %   io:format("ComputerStatus ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
  %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,time(),VmStatus}]),
  %   io:format("h_beat ~p~n",[{time(),?MODULE,?LINE}]),
+    RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
+    AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
+    NotAvailableComputers=[HostId||{not_available,HostId}<-ComputerStatus],
 
-%    RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
-%    AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
- %   NotAvailableComputers=[HostId||{not_available,HostId}<-ComputerStatus],
+    RunningVms=vms:vm_status(VmStatus,running),
+    AvailableVms=vms:vm_status(VmStatus,available),
+    NotAvailableVms=vms:vm_status(VmStatus,not_available),
 
- %   RunningVms=vms:vm_status(VmStatus,running),
- %   AvailableVms=vms:vm_status(VmStatus,available),
- %   NotAvailableVms=vms:vm_status(VmStatus,not_available),
-
- %   NewVmCandidates=vms:candidates(State#state.vm_candidates,RunningVms),
- %   NewState=State#state{comp
-uter_running=RunningComputers,
-%			 computer_available=AvailableComputers,
-%			 computer_not_available=NotAvailableComputers,
-%			 vms_running=RunningVms,
-%			 vms_available=AvailableVms,
-%			 vms_not_available=NotAvailableVms,
-%			 vm_candidates=NewVmCandidates},
+    NewVmCandidates=vms:candidates(State#state.vm_candidates,RunningVms),
+    NewState=State#state{computer_running=RunningComputers,
+			 computer_available=AvailableComputers,
+			 computer_not_available=NotAvailableComputers,
+			 vms_running=RunningVms,
+			 vms_available=AvailableVms,
+			 vms_not_available=NotAvailableVms,
+			 vm_candidates=NewVmCandidates},
  
     spawn(fun()->h_beat(Interval) end),    
-    {noreply, State};
+    {noreply, NewState};
 			     
 handle_cast(Msg, State) ->
     io:format("unmatched match cast ~p~n",[{?MODULE,?LINE,Msg}]),
@@ -336,54 +334,44 @@ h_beat(Interval)->
  %   io:format(" *************** "),
  %   io:format(" ~p",[{time()}]),
  %   io:format(" *************** ~n"),
-  
-   % io:format("computer status 1 ~p~n",[{time(),?MODULE,?LINE,db_computer:read_all()}]),
     ComputerStatus=computer:status_computers(),
-  %  io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
-    [db_computer:update(HostId,Status)||{Status,HostId}<-ComputerStatus],
-  %  io:format("computer status 2 ~p~n",[{time(),?MODULE,?LINE,db_computer:read_all()}]),
-
+%    io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
+    AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
+ %   io:format("AvailableComputers ~p~n",[{?MODULE,?LINE,AvailableComputers}]),
  
-%    Controllers=db_vm:type(controller),
- %   io:format("Controllers ~p~n",[{?MODULE,?LINE,Controllers}]),
- %   WorkerVmIds=dbread(worker),
+    [ControlVmId]=db_vm_id:read(controller),
+%    io:format("ControlVmId ~p~n",[{?MODULE,?LINE,ControlVmId}]),
+    WorkerVmIds=db_vm_id:read(worker),
 %    io:format("WorkerVmIds ~p~n",[{?MODULE,?LINE,WorkerVmIds}]),
-   
-    AvailableComputers=db_computer:status(available),
-    _CleanComputers=[computer:clean_computer(HostId)||{HostId,available}<-AvailableComputers],
-    io:format("AvailableComputers ~p~n",[{?MODULE,?LINE,AvailableComputers}]),
-    io:format("RunningComputers ~p~n",[{?MODULE,?LINE,db_computer:status(running)}]),
 
-    
-%    _CleanComputers=[computer:clean_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
+    _CleanComputers=[computer:clean_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
 %    io:format("CleanComputers ~p~n",[{?MODULE,?LINE,CleanComputers}]),
 
-%    _StartComputers=[computer:start_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
+    _StartComputers=[computer:start_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
  %   io:format("StartComputers ~p~n",[{?MODULE,?LINE,StartComputers}]),  
 
-   % _CleanVms=[computer:clean_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
+    _CleanVms=[computer:clean_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
   %  io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
 
-%    _StartVms=[computer:start_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
+    _StartVms=[computer:start_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
  %   io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
   
-   % RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
-   % VmStatus=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
+    RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
+    VmStatus=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
  %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,VmStatus}]),
 
-  %  _CleanVms2=[computer:clean_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
+    _CleanVms2=[computer:clean_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
 %    io:format("CleanVms2 ~p~n",[{?MODULE,?LINE,CleanVms2 }]),
 
-  %  _StartVms2=[computer:start_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
+    _StartVms2=[computer:start_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
 %    io:format("StartVms2 ~p~n",[{?MODULE,?LINE,StartVms2}]),
     
     
-  %  ComputerStatus2=computer:status_computers(),
-   % VmStatus2=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
+    ComputerStatus2=computer:status_computers(),
+    VmStatus2=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
 
 
-    rpc:cast(node(),?MODULE,heart_beat,[{Interval,glurk,glurk}]).
-  %  rpc:cast(node(),?MODULE,heart_beat,[{Interval,ComputerStatus2,VmStatus2}]).
+    rpc:cast(node(),?MODULE,heart_beat,[{Interval,ComputerStatus2,VmStatus2}]).
 
 %% --------------------------------------------------------------------
 %% Internal functions
