@@ -11,11 +11,12 @@
 -export([is_wanted/0,
 	 check_status/0,
 	 status_computers/0,
-	 start_vms/2,start_computer/2,
+	 start_vm/2,start_vms/2,start_computer/2,
 	 clean_computer/1,clean_computer/2,
-	 clean_vms/2
+	 clean_vm/2,clean_vms/2
 	]).
 
+-define(DbaseVmId,"10250").
 -define(ControlVmId,"10250").
 -define(TimeOut,3000).
 -define(ControlVmIds,["10250"]).
@@ -29,6 +30,7 @@
 %% Returns: non
 %% --------------------------------------------------------------------
 check_status()->
+    
     
     ok.
 
@@ -50,10 +52,12 @@ is_wanted()->
 status_computers()->
     F1=fun get_hostname/2,
     F2=fun check_host_status/3,
-
-    Computers=db_computer:read_all(),
-%    io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
+    {ok,HostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
+    Computers=rpc:call(DbaseVm,db_computer,read_all,[]),
+  %  io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
     Status=mapreduce:start(F1,F2,[],Computers),
+  %  io:format("Computers Status = ~p~n",[{?MODULE,?LINE,Status}]),
     Status.
     
    
@@ -62,6 +66,7 @@ status_computers()->
 get_hostname(Parent,{HostId,User,PassWd,IpAddr,Port,_Status})->
     Msg="hostname",
     Result=my_ssh:ssh_send(IpAddr,Port,User,PassWd,Msg,?TimeOut),
+  %  io:format("Result = ~p~n",[{?MODULE,?LINE,Result}]),
     Parent!{computer_status,{HostId,Result}}.
 
 check_host_status(computer_status,Vals,_)->
@@ -87,6 +92,29 @@ check_host_status([{HostId,{error,_Err}}|T],Acc) ->
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
+clean_vm(VmId,HostId)->
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
+    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+	       []->
+		   {error,[eexists,HostId,?MODULE,?LINE]};
+	     %  [{HostId,User,PassWd,IpAddr,Port}]->
+	       _->
+						%	    ok=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
+						%			file,del_dir_r,[VmId]),
+%		   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
+		   ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
+		   rpc:call(ControlVm,os,cmd,["rm -rf "++VmId]),
+		   R=rpc:call(ControlVm,filelib,is_dir,[VmId]),
+		   timer:sleep(300),
+		   Vm=list_to_atom(VmId++"@"++HostId),
+		   rpc:call(Vm,init,stop,[]),
+		   timer:sleep(300),
+%		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
+		   {R,VmId}
+    end,
+    Result.
+
 clean_vms(VmIds,HostId)->
     F1=fun clean_node/2,
     F2=fun clean_node_result/3,
@@ -98,20 +126,20 @@ clean_vms(VmIds,HostId)->
 
 clean_node(Parent,{HostId,VmId})->
     % Read computer info 
-    Result=case db_computer:read(HostId) of
+    {ok,HostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
+    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
 	       []->
-		   {error,[eexists,HostId]};
+		   {error,[eexists,HostId,?MODULE,?LINE]};
 	     %  [{HostId,User,PassWd,IpAddr,Port}]->
 	       _->
 						%	    ok=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
 						%			file,del_dir_r,[VmId]),
 %		   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
-		   rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
-			      os,cmd,["rm -rf "++VmId]),
-		   R=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),filelib,is_dir,[VmId]),
+		   rpc:call(DbaseVm,os,cmd,["rm -rf "++VmId]),
+		   R=rpc:call(DbaseVm,filelib,is_dir,[VmId]),
 		   timer:sleep(300),
-		   rpc:call(list_to_atom(VmId++"@"++HostId),
-			    init,stop,[]),
+		   rpc:call(DbaseVm,init,stop,[]),
 		   timer:sleep(300),
 %		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
 		   {R,VmId}
@@ -130,14 +158,15 @@ clean_computer(HostId)->
 
 % [{'30000@asus',"asus","30000",controller,not_available}]=db_vm:host_id(HostId),
 % [{"asus","pi","festum01","192.168.0.100",60110,not_available}]=db_computer:read(HostId)),
-   
-    Result=case db_computer:read(HostId) of
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
+    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
 	       []->
-		   {error,[eexists,HostId]};
+		   {error,[eexists,HostId,?MODULE,?LINE]};
 	       [{HostId,User,PassWd,IpAddr,Port,_ComputerStatus}]->
-		   case db_vm:host_id(HostId) of
+		   case rpc:call(DbaseVm,db_vm,host_id,[HostId]) of
 		       []->
-			   {error,[eexists_vms,HostId]};
+			   {error,[eexists_vms,HostId,?MODULE,?LINE]};
 		       VmIdList->
 			   do_clean(VmIdList,HostId,User,PassWd,IpAddr,Port)			       
 						%io:format("VmId = ~p",[{VmId,?MODULE,?LINE}])
@@ -157,10 +186,14 @@ do_clean([{Vm,_HostId,VmId,_Type,_VmStatus}|T],HostId,User,PassWd,IpAddr,Port)->
 %% --------------------------------------------------------------------
 clean_computer(HostId,VmId)->
     % Read computer info 
-    Result=case db_computer:read(HostId) of
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
+    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
 	       []->
 		   {error,[eexists,HostId]};
-	       [{HostId,User,PassWd,IpAddr,Port}]->
+	       [{HostId,User,PassWd,IpAddr,Port,_Status}]->
+		   Vm=list_to_atom(VmId++"@"++HostId),
+		   rpc:call(Vm,init,stop,[],1000),
 		   ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut)
 						%	    io:format("VmId = ~p",[{VmId,?MODULE,?LINE}])
 		       
@@ -171,7 +204,24 @@ clean_computer(HostId,VmId)->
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
-
+start_vm(VmId,HostId)->
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
+    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+		    []->
+			{error,[eexists,HostId,?MODULE,?LINE]};
+						%[{HostId,User,PassWd,IpAddr,Port}]->
+		    _->
+			ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
+			ok=rpc:call(ControlVm,file,make_dir,[VmId]),
+			[]=rpc:call(ControlVm,os,cmd,["erl -sname "++VmId++" -setcookie abc -detached "],2*?TimeOut),
+			Vm=list_to_atom(VmId++"@"++HostId),
+			R=check_started(500,Vm,10,{error,[Vm]}),
+		%	io:format("VmId = ~p",[{VmId,?MODULE,?LINE}]),
+		%	io:format(",  ~p~n",[{R,?MODULE,?LINE}]),
+			R
+		end,
+    StartResult.
 
 start_vms(VmIds,HostId)->
     F1=fun start_node/2,
@@ -183,9 +233,11 @@ start_vms(VmIds,HostId)->
 
 
 start_node(Parent,{HostId,VmId})->
-    StartResult=case db_computer:read(HostId) of
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
+    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
 		    []->
-			{error,[eexists,HostId]};
+			{error,[eexists,HostId,?MODULE,?LINE]};
 		    %[{HostId,User,PassWd,IpAddr,Port}]->
 		    _->
 			ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
@@ -205,10 +257,12 @@ start_node_result(start_node,Vals,_)->
 
 
 start_computer(HostId,VmId)->
-    StartResult=case db_computer:read(HostId) of
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
+    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
 		    []->
-			{error,[eexists,HostId]};
-		    [{HostId,User,PassWd,IpAddr,Port}]->
+			{error,[eexists,HostId,?MODULE,?LINE]};
+		    [{HostId,User,PassWd,IpAddr,Port,_Status}]->
 			ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"mkdir "++VmId,2*?TimeOut),
 			ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"erl -sname "++VmId++" -setcookie abc -detached ",2*?TimeOut),
 			Vm=list_to_atom(VmId++"@"++HostId),

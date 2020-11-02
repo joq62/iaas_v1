@@ -108,7 +108,7 @@ status_vms(HostId,VmIds)->
     F1=fun do_ping/2,
     F2=fun check_vm_status/3,
 
-  %  io:format("HostId,VmIds  ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
+    io:format("HostId,VmIds  ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
     Vms=[{HostId,VmId,list_to_atom(VmId++"@"++HostId)}||VmId<-VmIds],
     Status=mapreduce:start(F1,F2,[],Vms),
     Running=[{HostIdX,VmIdX}||{running,HostIdX,VmIdX}<-Status],

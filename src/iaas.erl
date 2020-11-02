@@ -16,6 +16,9 @@
 %-include("config.hrl").
 %% --------------------------------------------------------------------
 
+-define(DbaseVmId,"10250").
+
+
 
 %% --------------------------------------------------------------------
 %% Key Data structures
@@ -124,7 +127,7 @@ heart_beat({Interval,ComputerStatus,VmStatus})->
 -define(TEXTFILE,"./test_src/dbase_init.hrl").
 
 init([]) ->
-%    ssh:start(),
+    ssh:start(),
 %    ok=application:start(dbase_service),
     % To be removed
 %    dbase_service:load_textfile(?TEXTFILE),
@@ -279,7 +282,7 @@ handle_cast({heart_beat,{Interval,ComputerStatus,VmStatus}}, State) ->
 
  %   NewVmCandidates=vms:candidates(State#state.vm_candidates,RunningVms),
  %   NewState=State#state{comp
-uter_running=RunningComputers,
+%Ruter_running=RunningComputers,
 %			 computer_available=AvailableComputers,
 %			 computer_not_available=NotAvailableComputers,
 %			 vms_running=RunningVms,
@@ -336,11 +339,13 @@ h_beat(Interval)->
  %   io:format(" *************** "),
  %   io:format(" ~p",[{time()}]),
  %   io:format(" *************** ~n"),
+    {ok,HostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
   
    % io:format("computer status 1 ~p~n",[{time(),?MODULE,?LINE,db_computer:read_all()}]),
     ComputerStatus=computer:status_computers(),
   %  io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
-    [db_computer:update(HostId,Status)||{Status,HostId}<-ComputerStatus],
+    [rpc:call(DbaseVm,db_computer,update,[HostId,Status])||{Status,HostId}<-ComputerStatus],
   %  io:format("computer status 2 ~p~n",[{time(),?MODULE,?LINE,db_computer:read_all()}]),
 
  
@@ -349,23 +354,30 @@ h_beat(Interval)->
  %   WorkerVmIds=dbread(worker),
 %    io:format("WorkerVmIds ~p~n",[{?MODULE,?LINE,WorkerVmIds}]),
    
-    AvailableComputers=db_computer:status(available),
-    _CleanComputers=[computer:clean_computer(HostId)||{HostId,available}<-AvailableComputers],
+    AvailableComputers=rpc:call(DbaseVm,db_computer,status,[available]),
+ %   _CleanComputers=[computer:clean_computer(HostId)||{HostId,available}<-AvailableComputers],
     io:format("AvailableComputers ~p~n",[{?MODULE,?LINE,AvailableComputers}]),
-    io:format("RunningComputers ~p~n",[{?MODULE,?LINE,db_computer:status(running)}]),
+    io:format("RunningComputers ~p~n",[{?MODULE,?LINE,rpc:call(DbaseVm,db_computer,status,[running])}]),
 
     
-%    _CleanComputers=[computer:clean_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
-%    io:format("CleanComputers ~p~n",[{?MODULE,?LINE,CleanComputers}]),
+    CleanComputers=[computer:clean_computer(HostId,?ControlVmId)||{HostId,available}<-AvailableComputers],
+    io:format("CleanComputers ~p~n",[{?MODULE,?LINE,CleanComputers}]),
 
-%    _StartComputers=[computer:start_computer(HostId,ControlVmId)||HostId<-AvailableComputers],
- %   io:format("StartComputers ~p~n",[{?MODULE,?LINE,StartComputers}]),  
+    StartComputers=[computer:start_computer(HostId,?ControlVmId)||{HostId,available}<-AvailableComputers],
+    io:format("StartComputers ~p~n",[{?MODULE,?LINE,StartComputers}]),  
+    
+    % 
+    io:format("VmIds ~p~n",[{?MODULE,?LINE,rpc:call(DbaseVm,db_vm,host_id,["sthlm_1"]) }]),
+    [VmIds]=[rpc:call(DbaseVm,db_vm,host_id,[HostId])||{HostId,available}<-AvailableComputers],
+    io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
+    VmInfo=[{HostId,VmId}||{_Vm,HostId,VmId,worker,_Status}<-VmIds],
+    io:format("VmInfo ~p~n",[{?MODULE,?LINE,VmInfo }]),
 
-   % _CleanVms=[computer:clean_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
-  %  io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
+    CleanVms=[computer:clean_vm(WorkerVmId,HostId)||{HostId,WorkerVmId}<-VmInfo],
+    io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
 
-%    _StartVms=[computer:start_vms(WorkerVmIds,HostId)||HostId<-AvailableComputers],
- %   io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
+    StartVms=[computer:start_vm(WorkerVmId,HostId)||{HostId,WorkerVmId}<-VmInfo],
+    io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
   
    % RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
    % VmStatus=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
