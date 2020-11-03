@@ -30,7 +30,7 @@
 %% Returns: non
 %% --------------------------------------------------------------------
 check_status()->
-    
+lost computers will still be updated in dbase    
     
     ok.
 
@@ -126,8 +126,8 @@ clean_vms(VmIds,HostId)->
 
 clean_node(Parent,{HostId,VmId})->
     % Read computer info 
-    {ok,HostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
+    {ok,DbaseHostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
     Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
 	       []->
 		   {error,[eexists,HostId,?MODULE,?LINE]};
@@ -136,10 +136,13 @@ clean_node(Parent,{HostId,VmId})->
 						%	    ok=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
 						%			file,del_dir_r,[VmId]),
 %		   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
-		   rpc:call(DbaseVm,os,cmd,["rm -rf "++VmId]),
-		   R=rpc:call(DbaseVm,filelib,is_dir,[VmId]),
+		   ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
+		   rpc:call(ControlVm,os,cmd,["rm -rf "++VmId]),
+		   R=rpc:call(ControlVm,filelib,is_dir,[VmId]),
 		   timer:sleep(300),
-		   rpc:call(DbaseVm,init,stop,[]),
+		   Vm=list_to_atom(VmId++"@"++HostId),
+		   rpc:call(Vm,init,stop,[]),
+		   db_vm:update(Vm,not_available),		   
 		   timer:sleep(300),
 %		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
 		   {R,VmId}
@@ -178,6 +181,7 @@ do_clean([],_,_,_,_,_)->
 do_clean([{Vm,_HostId,VmId,_Type,_VmStatus}|T],HostId,User,PassWd,IpAddr,Port)->
     rpc:call(Vm,init,stop,[],5000),
     ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut),
+    db_vm:update(Vm,not_available),
     do_clean(T,HostId,User,PassWd,IpAddr,Port).
 % --------------------------------------------------------------------
 %% Function:start/0 
@@ -194,8 +198,9 @@ clean_computer(HostId,VmId)->
 	       [{HostId,User,PassWd,IpAddr,Port,_Status}]->
 		   Vm=list_to_atom(VmId++"@"++HostId),
 		   rpc:call(Vm,init,stop,[],1000),
+		   db_vm:update(Vm,not_available),
 		   ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut)
-						%	    io:format("VmId = ~p",[{VmId,?MODULE,?LINE}])
+	    %	    io:format("VmId = ~p",[{VmId,?MODULE,?LINE}])
 		       
 	   end,
     Result.
@@ -217,9 +222,13 @@ start_vm(VmId,HostId)->
 			[]=rpc:call(ControlVm,os,cmd,["erl -sname "++VmId++" -setcookie abc -detached "],2*?TimeOut),
 			Vm=list_to_atom(VmId++"@"++HostId),
 			R=check_started(500,Vm,10,{error,[Vm]}),
-		%	io:format("VmId = ~p",[{VmId,?MODULE,?LINE}]),
-		%	io:format(",  ~p~n",[{R,?MODULE,?LINE}]),
-			R
+			case R of
+			    ok->
+				db_vm:update(Vm,running),
+				{ok,Vm};
+			    Err->
+				{error,[Err,Vm,?MODULE,?LINE]}
+			end
 		end,
     StartResult.
 
@@ -245,9 +254,13 @@ start_node(Parent,{HostId,VmId})->
 			[]=rpc:call(ControlVm,os,cmd,["erl -sname "++VmId++" -setcookie abc -detached "],2*?TimeOut),
 			Vm=list_to_atom(VmId++"@"++HostId),
 			R=check_started(500,Vm,10,{error,[Vm]}),
-		%	io:format("VmId = ~p",[{VmId,?MODULE,?LINE}]),
-		%	io:format(",  ~p~n",[{R,?MODULE,?LINE}]),
-			R
+			case R of
+			    ok->
+				db_vm:update(Vm,running),
+				{ok,Vm};
+			    Err->
+				{error,[Err,Vm,?MODULE,?LINE]}
+			end
 		end,
     Parent!{start_node,StartResult}.
 
@@ -267,11 +280,15 @@ start_computer(HostId,VmId)->
 			ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"erl -sname "++VmId++" -setcookie abc -detached ",2*?TimeOut),
 			Vm=list_to_atom(VmId++"@"++HostId),
 			R=check_started(500,Vm,10,{error,[Vm]}),
-			rpc:call(Vm,mnesia,start,[]),
-		%	io:format("VmId = ~p",[{VmId,?MODULE,?LINE}]),
-		%	io:format(",  ~p~n",[{R,?MODULE,?LINE}]),
-%			timer:sleep(500),
-			R
+			case R of
+			    ok->
+				rpc:call(Vm,mnesia,start,[]),
+				db_computer:update(HostId,running),
+				db_vm:update(Vm,running),
+				{ok,HostId};
+			    Err->
+				{error,[Err,Vm,?MODULE,?LINE]}
+			end			
 		end,
     StartResult.
 
