@@ -11,9 +11,9 @@
 -export([is_wanted/0,
 	 check_status/0,
 	 status_computers/0,
-	 start_vm/2,start_vms/2,start_computer/2,
-	 clean_computer/1,clean_computer/2,
-	 clean_vm/2,clean_vms/2
+	 start_computer/2,
+	 clean_computer/1,
+	 clean_computer/2
 	]).
 
 -define(DbaseVmId,"10250").
@@ -30,7 +30,7 @@
 %% Returns: non
 %% --------------------------------------------------------------------
 check_status()->
-lost computers will still be updated in dbase    
+%lost computers will still be updated in dbase    
     
     ok.
 
@@ -87,70 +87,6 @@ check_host_status([{HostId,[HostId]}|T],Acc)->
 check_host_status([{HostId,{error,_Err}}|T],Acc) ->
     check_host_status(T,[{not_available,HostId}|Acc]).
 
-% --------------------------------------------------------------------
-%% Function:start/0 
-%% Description: Initiate the eunit tests, set upp needed processes etc
-%% Returns: non
-%% --------------------------------------------------------------------
-clean_vm(VmId,HostId)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
-	       []->
-		   {error,[eexists,HostId,?MODULE,?LINE]};
-	     %  [{HostId,User,PassWd,IpAddr,Port}]->
-	       _->
-						%	    ok=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
-						%			file,del_dir_r,[VmId]),
-%		   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
-		   ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
-		   rpc:call(ControlVm,os,cmd,["rm -rf "++VmId]),
-		   R=rpc:call(ControlVm,filelib,is_dir,[VmId]),
-		   timer:sleep(300),
-		   Vm=list_to_atom(VmId++"@"++HostId),
-		   rpc:call(Vm,init,stop,[]),
-		   timer:sleep(300),
-%		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
-		   {R,VmId}
-    end,
-    Result.
-
-clean_vms(VmIds,HostId)->
-    F1=fun clean_node/2,
-    F2=fun clean_node_result/3,
-%    io:format("HostId,VmIds ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
-    L=[{HostId,XVmId}||XVmId<-VmIds],
-%    io:format("L  ~p~n",[{?MODULE,?LINE,L}]),
-    ResultNodeStart=mapreduce:start(F1,F2,[],L),
-    ResultNodeStart.
-
-clean_node(Parent,{HostId,VmId})->
-    % Read computer info 
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
-	       []->
-		   {error,[eexists,HostId,?MODULE,?LINE]};
-	     %  [{HostId,User,PassWd,IpAddr,Port}]->
-	       _->
-						%	    ok=rpc:call(list_to_atom(?ControlVmId++"@"++HostId),
-						%			file,del_dir_r,[VmId]),
-%		   io:format("HostId,VmId ~p~n",[{?MODULE,?LINE,HostId,VmId}]),
-		   ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
-		   rpc:call(ControlVm,os,cmd,["rm -rf "++VmId]),
-		   R=rpc:call(ControlVm,filelib,is_dir,[VmId]),
-		   timer:sleep(300),
-		   Vm=list_to_atom(VmId++"@"++HostId),
-		   rpc:call(Vm,init,stop,[]),
-		   db_vm:update(Vm,not_available),		   
-		   timer:sleep(300),
-%		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
-		   {R,VmId}
-    end,
-    Parent!{clean_node,Result}.
-
-clean_node_result(_Key,Vals,_)->		
-    Vals.
 
 % --------------------------------------------------------------------
 %% Function:start/0 
@@ -204,70 +140,6 @@ clean_computer(HostId,VmId)->
 		       
 	   end,
     Result.
-% --------------------------------------------------------------------
-%% Function:start/0 
-%% Description: Initiate the eunit tests, set upp needed processes etc
-%% Returns: non
-%% --------------------------------------------------------------------
-start_vm(VmId,HostId)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
-		    []->
-			{error,[eexists,HostId,?MODULE,?LINE]};
-						%[{HostId,User,PassWd,IpAddr,Port}]->
-		    _->
-			ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
-			ok=rpc:call(ControlVm,file,make_dir,[VmId]),
-			[]=rpc:call(ControlVm,os,cmd,["erl -sname "++VmId++" -setcookie abc -detached "],2*?TimeOut),
-			Vm=list_to_atom(VmId++"@"++HostId),
-			R=check_started(500,Vm,10,{error,[Vm]}),
-			case R of
-			    ok->
-				db_vm:update(Vm,running),
-				{ok,Vm};
-			    Err->
-				{error,[Err,Vm,?MODULE,?LINE]}
-			end
-		end,
-    StartResult.
-
-start_vms(VmIds,HostId)->
-    F1=fun start_node/2,
-    F2=fun start_node_result/3,
-%    L=[{XHostId,XVmId}||XVmId<-VmIds],
-    L=[{HostId,VmId}||VmId<-VmIds],
-    ResultNodeStart=mapreduce:start(F1,F2,[],L),
-    ResultNodeStart.
-
-
-start_node(Parent,{HostId,VmId})->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
-		    []->
-			{error,[eexists,HostId,?MODULE,?LINE]};
-		    %[{HostId,User,PassWd,IpAddr,Port}]->
-		    _->
-			ControlVm=list_to_atom(?ControlVmId++"@"++HostId),
-			ok=rpc:call(ControlVm,file,make_dir,[VmId]),
-			[]=rpc:call(ControlVm,os,cmd,["erl -sname "++VmId++" -setcookie abc -detached "],2*?TimeOut),
-			Vm=list_to_atom(VmId++"@"++HostId),
-			R=check_started(500,Vm,10,{error,[Vm]}),
-			case R of
-			    ok->
-				db_vm:update(Vm,running),
-				{ok,Vm};
-			    Err->
-				{error,[Err,Vm,?MODULE,?LINE]}
-			end
-		end,
-    Parent!{start_node,StartResult}.
-
-start_node_result(start_node,Vals,_)->		
-    Vals.
-
-
 
 start_computer(HostId,VmId)->
     {ok,DbaseHostId}=inet:gethostname(),
@@ -284,7 +156,7 @@ start_computer(HostId,VmId)->
 			    ok->
 				rpc:call(Vm,mnesia,start,[]),
 				db_computer:update(HostId,running),
-				db_vm:update(Vm,running),
+				db_vm:update(Vm,allocated),
 				{ok,HostId};
 			    Err->
 				{error,[Err,Vm,?MODULE,?LINE]}

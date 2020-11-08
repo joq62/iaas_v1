@@ -18,8 +18,6 @@
 
 -define(DbaseVmId,"10250").
 
-%-define(ControlVmId,"10250").
-%-define(TimeOut,3000).
 
 
 %% --------------------------------------------------------------------
@@ -48,8 +46,7 @@
 -export([vm_status/1,computer_status/1,
 	 start_node/3,stop_node/1,
 	 active/0,passive/0,all/0,
-	 allocate_vm/0,free_vm/1,
-	 get_vm/2,get_all_vms/0,
+	 get_vm/0,get_vm/2,get_all_vms/0,
 	 log/0
 	]).
 
@@ -86,13 +83,8 @@ vm_status(Status)->
 computer_status(Status)->
     gen_server:call(?MODULE, {computer_status,Status},infinity).
 
-
-allocate_vm()->
-    gen_server:call(?MODULE, {allocate_vm},infinity).
-free_vm(Vm)->
-    gen_server:call(?MODULE, {free_vm,Vm},infinity).
-
-
+get_vm()->
+    gen_server:call(?MODULE, {get_vm},infinity).
 get_vm(Restrictions,HostIds)->
     gen_server:call(?MODULE, {get_vm,Restrictions,HostIds},infinity).
 get_all_vms()->
@@ -115,8 +107,8 @@ log()->
     gen_server:call(?MODULE, {log},infinity).
 %%----------------------------------------------------------------------
 
-heart_beat(Interval)->
-    gen_server:cast(?MODULE, {heart_beat,Interval}).
+heart_beat({Interval,ComputerStatus,VmStatus})->
+    gen_server:cast(?MODULE, {heart_beat,{Interval,ComputerStatus,VmStatus}}).
 
 
 %% ====================================================================
@@ -171,17 +163,19 @@ handle_call({get_all_vms},_From,State) ->
     Reply=State#state.vm_candidates,
     {reply, Reply, State};
 
-handle_call({allocate_vm},_From,State) ->
-    Reply=rpc:call(node(),vm,allocate,[],5000),	  
-    {reply, Reply, State};
-
-handle_call({free_vm,Vm},_From,State) ->
-    Reply=rpc:call(node(),vm,free,[Vm],5000),	  
-    {reply, Reply, State};
-
-
+handle_call({get_vm},_From,State) ->
+    Reply=case State#state.vm_candidates of
+	      []->
+		  NewState=State,
+		  {error,[no_vms_running]};
+	      [{HostId,VmId}|T]->
+		  NewState=State#state{vm_candidates=lists:append(T,[{HostId,VmId}])},
+		  {ok,{HostId,VmId,list_to_atom(VmId++"@"++HostId)}}
+	  end,
+    	  
+    {reply, Reply, NewState};
 handle_call({get_vm,Restriction,HostIds},_From,State) ->
-   
+    
     Reply=case Restriction of
 	      not_from->
 		  case [{XHostId,XVmId}||{XHostId,XVmId}<-State#state.vm_candidates,
@@ -258,7 +252,29 @@ handle_call(Request, From, State) ->
 %%          {noreply, State, Timeout} |
 %%          {stop, Reason, State}            (terminate/2 is called)
 %% -------------------------------------------------------------------
-handle_cast({heart_beat,Interval}, State) ->
+handle_cast({heart_beat,{Interval,_ComputerStatus,_VmStatus}}, State) ->
+ %   io:format("ComputerStatus ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
+ %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,time(),VmStatus}]),
+ %   io:format("h_beat ~p~n",[{time(),?MODULE,?LINE}]),
+
+%    RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
+%    AvailableComputers=[HostId||{available,HostId}<-ComputerStatus],
+ %   NotAvailableComputers=[HostId||{not_available,HostId}<-ComputerStatus],
+
+ %   RunningVms=vms:vm_status(VmStatus,running),
+ %   AvailableVms=vms:vm_status(VmStatus,available),
+ %   NotAvailableVms=vms:vm_status(VmStatus,not_available),
+
+ %   NewVmCandidates=vms:candidates(State#state.vm_candidates,RunningVms),
+ %   NewState=State#state{comp
+%Ruter_running=RunningComputers,
+%			 computer_available=AvailableComputers,
+%			 computer_not_available=NotAvailableComputers,
+%			 vms_running=RunningVms,
+%			 vms_available=AvailableVms,
+%			 vms_not_available=NotAvailableVms,
+%			 vm_candidates=NewVmCandidates},
+ 
     spawn(fun()->h_beat(Interval) end),    
     {noreply, State};
 			     
@@ -304,23 +320,36 @@ code_change(_OldVsn, State, _Extra) ->
 %% Returns: non
 %% --------------------------------------------------------------------
 h_beat(Interval)->
-  %  timer:sleep(Interval),
+    timer:sleep(Interval),
  %   io:format(" *************** "),
  %   io:format(" ~p",[{time()}]),
  %   io:format(" *************** ~n"),
     {ok,HostId}=inet:gethostname(),
     DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
   
+   % io:format("computer status 1 ~p~n",[{time(),?MODULE,?LINE,db_computer:read_all()}]),
     ComputerStatus=computer:status_computers(),
+  %  io:format("ComputerActualState ~p~n",[{?MODULE,?LINE,time(),ComputerStatus}]),
     [rpc:call(DbaseVm,db_computer,update,[XHostId,Status])||{Status,XHostId}<-ComputerStatus],
  
     AvailableComputers=rpc:call(DbaseVm,db_computer,status,[available]),
+ %   _CleanComputers=[computer:clean_computer(HostId)||{HostId,available}<-AvailableComputers],
+ %   io:format("AvailableComputers ~p~n",[{?MODULE,?LINE,AvailableComputers}]),
+  %  io:format("RunningComputers ~p~n",[{?MODULE,?LINE,rpc:call(DbaseVm,db_computer,status,[running])}]),
+
+    
     _CleanComputers=[computer:clean_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
+%    io:format("CleanComputers ~p~n",[{?MODULE,?LINE,CleanComputers}]),
+
     _StartComputers=[computer:start_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
-     case [rpc:call(DbaseVm,db_vm,host_id,[XHostId])||{XHostId,available}<-AvailableComputers] of
+ %   io:format("StartComputers ~p~n",[{?MODULE,?LINE,StartComputers}]),  
+    
+    % 
+  %  io:format("VmIds ~p~n",[{?MODULE,?LINE,rpc:call(DbaseVm,db_vm,host_id,["sthlm_1"]) }]),
+    case [rpc:call(DbaseVm,db_vm,host_id,[XHostId])||{XHostId,available}<-AvailableComputers] of
 	[]->
 	    ok;
-	[VmIds]-> 
+	[VmIds]->
 	 %   io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
 	    VmInfo=[{XHostId,VmId}||{_Vm,XHostId,VmId,worker,_Status}<-VmIds],
 	 %   io:format("VmInfo ~p~n",[{?MODULE,?LINE,VmInfo }]),
@@ -330,9 +359,24 @@ h_beat(Interval)->
 	  %  io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
 	    ok
     end,
-    timer:sleep(Interval),
-    rpc:cast(node(),?MODULE,heart_beat,[Interval]).
- 
+   % RunningComputers=[HostId||{running,HostId}<-ComputerStatus],
+   % VmStatus=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
+ %   io:format("VmStatus ~p~n",[{?MODULE,?LINE,VmStatus}]),
+
+  %  _CleanVms2=[computer:clean_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
+%    io:format("CleanVms2 ~p~n",[{?MODULE,?LINE,CleanVms2 }]),
+
+  %  _StartVms2=[computer:start_vms(VmIds,HostId)||{HostId,_,{available,VmIds},_}<-VmStatus],
+%    io:format("StartVms2 ~p~n",[{?MODULE,?LINE,StartVms2}]),
+    
+    
+  %  ComputerStatus2=computer:status_computers(),
+   % VmStatus2=[vms:status_vms(HostId,WorkerVmIds)||HostId<-RunningComputers],
+
+
+    rpc:cast(node(),?MODULE,heart_beat,[{Interval,glurk,glurk}]).
+  %  rpc:cast(node(),?MODULE,heart_beat,[{Interval,ComputerStatus2,VmStatus2}]).
+
 %% --------------------------------------------------------------------
 %% Internal functions
 %% --------------------------------------------------------------------
