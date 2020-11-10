@@ -37,9 +37,9 @@ allocate()->
 		[]->
 		    {error,[no_free_vms,?MODULE,?LINE]};
 		FreeVms ->
-		    [{Vm,_,_,_,free}|_]=FreeVms,
+		    [{Vm,HostId,VmId,_,free}|_]=FreeVms,
 		    rpc:call(DbaseVm,db_vm,update,[Vm,allocated],5000),
-		    {ok,Vm}
+		    {ok,HostId,VmId}
 	    end,
     Result.
 

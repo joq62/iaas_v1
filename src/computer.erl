@@ -157,6 +157,7 @@ start_computer(HostId,VmId)->
 				rpc:call(Vm,mnesia,start,[]),
 				db_computer:update(HostId,running),
 				db_vm:update(Vm,allocated),
+			        % starta common !!!!!
 				{ok,HostId};
 			    Err->
 				{error,[Err,Vm,?MODULE,?LINE]}
