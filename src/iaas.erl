@@ -308,28 +308,11 @@ h_beat(Interval)->
  %   io:format(" *************** "),
  %   io:format(" ~p",[{time()}]),
  %   io:format(" *************** ~n"),
-    {ok,HostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
-  
-    ComputerStatus=computer:status_computers(),
-    [rpc:call(DbaseVm,db_computer,update,[XHostId,Status])||{Status,XHostId}<-ComputerStatus],
- 
-    AvailableComputers=rpc:call(DbaseVm,db_computer,status,[available]),
-    _CleanComputers=[computer:clean_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
-    _StartComputers=[computer:start_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
-     case [rpc:call(DbaseVm,db_vm,host_id,[XHostId])||{XHostId,available}<-AvailableComputers] of
-	[]->
-	    ok;
-	[VmIds]-> 
-	 %   io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
-	    VmInfo=[{XHostId,VmId}||{_Vm,XHostId,VmId,worker,_Status}<-VmIds],
-	 %   io:format("VmInfo ~p~n",[{?MODULE,?LINE,VmInfo }]),
-	    _CleanVms=[vm:clean_vm(WorkerVmId,XHostId)||{XHostId,WorkerVmId}<-VmInfo],
-	 %   io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
-	    _StartVms=[{vm:start_vm(WorkerVmId,XHostId),XHostId}||{XHostId,WorkerVmId}<-VmInfo],
-	  %  io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
-	    ok
-    end,
+
+
+    ok=rpc:call(node(),computer,check_update,[],5*60*1000),
+    ok=rpc:call(node(),vm,check_update,[],5*60*1000),
+
     timer:sleep(Interval),
     rpc:cast(node(),?MODULE,heart_beat,[Interval]).
  

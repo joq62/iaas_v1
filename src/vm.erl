@@ -8,15 +8,15 @@
 
 
 
--export([start_vm/2,
+-export([check_update/0,
+	 start_vm/2,
 	 start_vms/2,
 	 clean_vm/2,
 	 clean_vms/2,
-	 vm_status/2,
 	 allocate/0,
-	 free/1,
-%
-	 status_vms/2
+	 free/1
+%        vm_status/2,
+%	 status_vms/2
 	
 	]).
 
@@ -30,15 +30,25 @@
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
+check_update()->
+    AllVms=if_db:vm_read_all(),
+    Ping=[{net_adm:ping(Vm),Vm}||{Vm,_HostId,_VmId,_Type,_Status}<-AllVms],
+    [free(Vm)||{R,Vm}<-Ping,
+	       R/=pong],
+    ok.
+
+% --------------------------------------------------------------------
+%% Function:start/0 
+%% Description: Initiate the eunit tests, set upp needed processes etc
+%% Returns: non
+%% --------------------------------------------------------------------
 allocate()->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result= case rpc:call(DbaseVm,db_vm,status,[free],5000) of
+    Result= case if_db:vm_status(free) of
 		[]->
 		    {error,[no_free_vms,?MODULE,?LINE]};
 		FreeVms ->
 		    [{Vm,HostId,VmId,_,free}|_]=FreeVms,
-		    rpc:call(DbaseVm,db_vm,update,[Vm,allocated],5000),
+		    if_db:vm_update(Vm,allocated),
 		    {ok,HostId,VmId}
 	    end,
     Result.
@@ -49,9 +59,7 @@ allocate()->
 %% Returns: non
 %% --------------------------------------------------------------------
 free(Vm)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result= case rpc:call(DbaseVm,db_vm,info,[Vm],5000) of
+    Result= case if_db:vm_info(Vm) of
 		[]->
 		    {error,[eexist,Vm,?MODULE,?LINE]};
 		[{_,HostId,VmId,_,_}]->
@@ -75,9 +83,8 @@ free(Vm)->
 %% Returns: non
 %% --------------------------------------------------------------------
 start_vm(VmId,HostId)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+    io:format("Start Vm = ~p~n",[{VmId,HostId,?MODULE,?LINE}]),
+    StartResult=case if_db:computer_read(HostId) of
 		    []->
 			{error,[eexists,HostId,?MODULE,?LINE]};
 						%[{HostId,User,PassWd,IpAddr,Port}]->
@@ -89,7 +96,7 @@ start_vm(VmId,HostId)->
 			R=check_started(500,Vm,10,{error,[Vm]}),
 			case R of
 			    ok->
-				db_vm:update(Vm,free),
+				if_db:vm_update(Vm,free),
 				{ok,Vm};
 			    Err->
 				{error,[Err,Vm,?MODULE,?LINE]}
@@ -122,7 +129,7 @@ start_node(Parent,{HostId,VmId})->
 			io:format("~p~n",[{?MODULE,?LINE,HostId,VmId,R}]),
 			case R of
 			    ok->
-				db_vm:update(Vm,free),
+				if_db:vm_update(Vm,free),
 				{ok,Vm};
 			    Err->
 				{error,[Err,Vm,?MODULE,?LINE]}
@@ -162,9 +169,7 @@ check_started(N,Vm,Timer,_Result)->
 %% Returns: non
 %% --------------------------------------------------------------------
 clean_vm(VmId,HostId)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+    Result=case if_db:computer_read(HostId) of
 	       []->
 		   {error,[eexists,HostId,?MODULE,?LINE]};
 	     %  [{HostId,User,PassWd,IpAddr,Port}]->
@@ -178,7 +183,7 @@ clean_vm(VmId,HostId)->
 		   timer:sleep(300),
 		   Vm=list_to_atom(VmId++"@"++HostId),
 		   rpc:call(Vm,init,stop,[]),
-		   rpc:call(DbaseVm,db_vm,update,[Vm,not_available],5000),	     	   
+		   if_db:vm_update(Vm,not_available),	     	   
 		   timer:sleep(300),
 		   timer:sleep(300),
 %		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
@@ -196,10 +201,7 @@ clean_vms(VmIds,HostId)->
     ResultNodeStart.
 
 clean_node(Parent,{HostId,VmId})->
-    % Read computer info 
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+    Result=case if_db:computer_read(HostId) of
 	       []->
 		   {error,[eexists,HostId,?MODULE,?LINE]};
 	     %  [{HostId,User,PassWd,IpAddr,Port}]->
@@ -213,7 +215,7 @@ clean_node(Parent,{HostId,VmId})->
 		   timer:sleep(300),
 		   Vm=list_to_atom(VmId++"@"++HostId),
 		   rpc:call(Vm,init,stop,[]),
-		   rpc:call(DbaseVm,db_vm,update,[Vm,not_available],5000),		   
+		   if_db:vm_update(Vm,not_available),		   
 		   timer:sleep(300),
 %		   io:format("rm -rf VmId = ~p~n",[{R,VmId,?MODULE,?LINE}]),
 		   {R,VmId}

@@ -9,7 +9,7 @@
 
 
 -export([is_wanted/0,
-	 check_status/0,
+	 check_update/0,
 	 status_computers/0,
 	 start_computer/2,
 	 clean_computer/1,
@@ -29,8 +29,29 @@
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
-check_status()->
-%lost computers will still be updated in dbase    
+check_update()->
+    ComputerStatus=status_computers(),
+%    io:format("ComputerStatus ~p~n",[{ComputerStatus, time(),?MODULE,?LINE }]),
+    _R=[if_db:computer_update(XHostId,Status)||{Status,XHostId}<-ComputerStatus],
+  %  io:format("R =  ~p~n",[{R, time(),?MODULE,?LINE }]),
+ 
+    AvailableComputers=if_db:computer_status(available),
+%    io:format("AvailableComputers ~p~n",[{AvailableComputers, time(),?MODULE,?LINE }]),
+    _CleanComputers=[computer:clean_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
+    _StartComputers=[computer:start_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
+    case [if_db:vm_host_id(XHostId)||{XHostId,available}<-AvailableComputers] of
+	[]->
+	    ok;
+	[VmIds]-> 
+	%   io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
+	    VmInfo=[{XHostId,VmId}||{_Vm,XHostId,VmId,worker,_Status}<-VmIds],
+	 %   io:format("VmInfo ~p~n",[{?MODULE,?LINE,VmInfo }]),
+	    _CleanVms=[vm:clean_vm(WorkerVmId,XHostId)||{XHostId,WorkerVmId}<-VmInfo],
+	 %   io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
+	    _StartVms=[{vm:start_vm(WorkerVmId,XHostId),XHostId}||{XHostId,WorkerVmId}<-VmInfo],
+	  %  io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
+	    ok
+    end,
     
     ok.
 

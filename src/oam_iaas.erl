@@ -23,12 +23,8 @@
 %% Returns: non
 %% --------------------------------------------------------------------
 vm_status(Status)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    L=rpc:call(DbaseVm,db_vm,status,[Status],5000),
- %   R=[{XStatus,VmId,HostId}||{_Vm,HostId,VmId,Type,XStatus}<-L],
+    L=if_db:vm_status(Status),
     R=[{HostId,VmId}||{_Vm,HostId,VmId,_Type,_XStatus}<-L],
-    
     R.
 % --------------------------------------------------------------------
 %% Function:start/0 
@@ -36,10 +32,7 @@ vm_status(Status)->
 %% Returns: non
 %% --------------------------------------------------------------------
 computer_status(Status)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    L=rpc:call(DbaseVm,db_computer,status,[Status],5000),
- %   R=[{XStatus,VmId,HostId}||{_Vm,HostId,VmId,Type,XStatus}<-L],
+    L=if_db:computer_status(Status),
     R=[HostId||{HostId,_XStatus}<-L],
     
     R.
