@@ -33,8 +33,15 @@
 check_update()->
     AllVms=if_db:vm_read_all(),
     Ping=[{net_adm:ping(Vm),Vm}||{Vm,_HostId,_VmId,_Type,_Status}<-AllVms],
-    [free(Vm)||{R,Vm}<-Ping,
-	       R/=pong],
+    OrphansVm=[Vm||{R,Vm}<-Ping,
+		   R/=pong],
+    AllServices=if_db:sd_read_all(),
+    io:format("AllServices= ~p~n",[{AllServices,?MODULE,?LINE}]),
+    ServicesToRemove=[{XServiceId,XServiceVsn,XVm}||{XServiceId,XServiceVsn,_XHostId,_XVmId,XVm}<-AllServices,
+						 lists:member(XVm,OrphansVm)],
+    io:format("ServicesToRemove= ~p~n",[{ServicesToRemove,?MODULE,?LINE}]),
+    [if_db:sd_delete(ServiceId,ServiceVsn,Vm)||{ServiceId,ServiceVsn,Vm}<-ServicesToRemove],
+    io:format("AllServices removed = ~p~n",[{if_db:sd_read_all(),?MODULE,?LINE}]),
     ok.
 
 % --------------------------------------------------------------------

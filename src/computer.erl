@@ -118,13 +118,11 @@ clean_computer(HostId)->
 
 % [{'30000@asus',"asus","30000",controller,not_available}]=db_vm:host_id(HostId),
 % [{"asus","pi","festum01","192.168.0.100",60110,not_available}]=db_computer:read(HostId)),
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+    Result=case if_db:computer_read(HostId) of
 	       []->
 		   {error,[eexists,HostId,?MODULE,?LINE]};
 	       [{HostId,User,PassWd,IpAddr,Port,_ComputerStatus}]->
-		   case rpc:call(DbaseVm,db_vm,host_id,[HostId]) of
+		   case if_db:vm_host_id(HostId) of
 		       []->
 			   {error,[eexists_vms,HostId,?MODULE,?LINE]};
 		       VmIdList->
@@ -136,9 +134,11 @@ clean_computer(HostId)->
 do_clean([],_,_,_,_,_)->
     ok;
 do_clean([{Vm,_HostId,VmId,_Type,_VmStatus}|T],HostId,User,PassWd,IpAddr,Port)->
+    if_db:vm_update(Vm,not_available),
+    [if_db:sd_delete(ServiceId,Vsn,ServiceVm)||{ServiceId,Vsn,_HostId,_VmId,ServiceVm}<-if_db:sd_read_all(),
+							      ServiceVm==Vm],
     rpc:call(Vm,init,stop,[],5000),
     ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut),
-    db_vm:update(Vm,not_available),
     do_clean(T,HostId,User,PassWd,IpAddr,Port).
 % --------------------------------------------------------------------
 %% Function:start/0 
@@ -147,15 +147,15 @@ do_clean([{Vm,_HostId,VmId,_Type,_VmStatus}|T],HostId,User,PassWd,IpAddr,Port)->
 %% --------------------------------------------------------------------
 clean_computer(HostId,VmId)->
     % Read computer info 
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    Result=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+    Result=case if_db:computer_read(HostId) of
 	       []->
 		   {error,[eexists,HostId]};
 	       [{HostId,User,PassWd,IpAddr,Port,_Status}]->
+		    if_db:vm_update(Vm,not_available),
+		   [if_db:sd_delete(ServiceId,Vsn,ServiceVm)||{ServiceId,Vsn,_HostId,_VmId,ServiceVm}<-if_db:sd_read_all(),
+							      ServiceVm==Vm],
 		   Vm=list_to_atom(VmId++"@"++HostId),
 		   rpc:call(Vm,init,stop,[],1000),
-		   db_vm:update(Vm,not_available),
 		   ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut)
 	    %	    io:format("VmId = ~p",[{VmId,?MODULE,?LINE}])
 		       
