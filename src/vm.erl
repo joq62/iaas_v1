@@ -14,9 +14,9 @@
 	 clean_vm/2,
 	 clean_vms/2,
 	 allocate/0,
-	 free/1
+	 free/1,
 %        vm_status/2,
-%	 status_vms/2
+	 status_vms/1
 	
 	]).
 
@@ -66,6 +66,7 @@ allocate()->
 %% Returns: non
 %% --------------------------------------------------------------------
 free(Vm)->
+    if_db:vm_update(Vm,not_available),
     Result= case if_db:vm_info(Vm) of
 		[]->
 		    {error,[eexist,Vm,?MODULE,?LINE]};
@@ -264,18 +265,26 @@ vm_status(VmStatus,Type)->
 %% --------------------------------------------------------------------
 
 %@doc, spec etc
-
-status_vms(HostId,VmIds)->
+ 
+status_vms(StatusComputers)->
+    [status_vms_one_host(XHostId)||{_,XHostId}<-StatusComputers].
+status_vms_one_host(HostId)->
     F1=fun do_ping/2,
     F2=fun check_vm_status/3,
-
-    io:format("HostId,VmIds  ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
-    Vms=[{HostId,VmId,list_to_atom(VmId++"@"++HostId)}||VmId<-VmIds],
-    Status=mapreduce:start(F1,F2,[],Vms),
-    Running=[{HostIdX,VmIdX}||{running,HostIdX,VmIdX}<-Status],
-    Available=[{HostIdX,VmIdX}||{available,HostIdX,VmIdX}<-Status],  
-    NotAvailable=[{HostIdX,VmIdX}||{not_available,HostIdX,VmIdX}<-Status],   
-    {HostId,{running,Running},{available,Available},{not_available,NotAvailable}}.
+    
+    Result=case if_db:vm_host_id(HostId) of
+	       []->
+		   {error,[no_entry,HostId,?MODULE,?LINE]};
+	       VmInfoList-> % {Vm,HostId,VmId,Type,Status}
+		   % io:format("HostId, ~p~n",[{?MODULE,?LINE,HostId,VmIds}]),
+		   Vms=[{XHostId,XVmId,XVm}||{XVm,XHostId,XVmId,_Type,_Status}<-VmInfoList],
+		   Status=mapreduce:start(F1,F2,[],Vms),
+		   Running=[{HostIdX,VmIdX}||{running,HostIdX,VmIdX}<-Status],
+		   NotRunning=[{HostIdX,VmIdX}||{not_running,HostIdX,VmIdX}<-Status],   
+		 %  {HostId,{running,Running},{not_running,NotRunning}}
+		   {{running,Running},{not_running,NotRunning}}
+	   end,
+    Result.
 		  
 do_ping(Parent,{HostId,VmId,Vm})->
     Result=net_adm:ping(Vm),
@@ -293,9 +302,7 @@ check_vm_status([{HostId,VmId,Result}|T],Acc)->
 	       pong->
 		   [{running,HostId,VmId}|Acc];
 	       pang->
-		   [{available,HostId,VmId}|Acc];
-	       _ ->
-		   [{not_available,HostId,VmId}|Acc]
+		   [{not_running,HostId,VmId}|Acc]
 	   end,
     check_vm_status(T,NewAcc).
 

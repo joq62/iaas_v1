@@ -8,8 +8,7 @@
 
 
 
--export([is_wanted/0,
-	 check_update/0,
+-export([
 	 status_computers/0,
 	 start_computer/2,
 	 clean_computer/1,
@@ -29,39 +28,14 @@
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
-check_update()->
-    ComputerStatus=status_computers(),
-%    io:format("ComputerStatus ~p~n",[{ComputerStatus, time(),?MODULE,?LINE }]),
-    _R=[if_db:computer_update(XHostId,Status)||{Status,XHostId}<-ComputerStatus],
-  %  io:format("R =  ~p~n",[{R, time(),?MODULE,?LINE }]),
- 
-    AvailableComputers=if_db:computer_status(available),
-%    io:format("AvailableComputers ~p~n",[{AvailableComputers, time(),?MODULE,?LINE }]),
-    _CleanComputers=[computer:clean_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
-    _StartComputers=[computer:start_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
-    case [if_db:vm_host_id(XHostId)||{XHostId,available}<-AvailableComputers] of
-	[]->
-	    ok;
-	[VmIds]-> 
-	%   io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
-	    VmInfo=[{XHostId,VmId}||{_Vm,XHostId,VmId,worker,_Status}<-VmIds],
-	 %   io:format("VmInfo ~p~n",[{?MODULE,?LINE,VmInfo }]),
-	    _CleanVms=[vm:clean_vm(WorkerVmId,XHostId)||{XHostId,WorkerVmId}<-VmInfo],
-	 %   io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
-	    _StartVms=[{vm:start_vm(WorkerVmId,XHostId),XHostId}||{XHostId,WorkerVmId}<-VmInfo],
-	  %  io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
-	    ok
-    end,
-    
-    ok.
+
 
 % --------------------------------------------------------------------
 %% Function:start/0 
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
-is_wanted()->
-    ok.
+
 % --------------------------------------------------------------------
 %% Function:start/0 
 %% Description: Initiate the eunit tests, set upp needed processes etc
@@ -135,7 +109,7 @@ do_clean([],_,_,_,_,_)->
     ok;
 do_clean([{Vm,_HostId,VmId,_Type,_VmStatus}|T],HostId,User,PassWd,IpAddr,Port)->
     if_db:vm_update(Vm,not_available),
-    [if_db:sd_delete(ServiceId,Vsn,ServiceVm)||{ServiceId,Vsn,_HostId,_VmId,ServiceVm}<-if_db:sd_read_all(),
+    [if_db:sd_delete(ServiceId,Vsn,ServiceVm)||{ServiceId,Vsn,_XHostId,_VmId,ServiceVm}<-if_db:sd_read_all(),
 							      ServiceVm==Vm],
     rpc:call(Vm,init,stop,[],5000),
     ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"rm -rf "++VmId,2*?TimeOut),
@@ -151,7 +125,8 @@ clean_computer(HostId,VmId)->
 	       []->
 		   {error,[eexists,HostId]};
 	       [{HostId,User,PassWd,IpAddr,Port,_Status}]->
-		    if_db:vm_update(Vm,not_available),
+		   Vm=list_to_atom(VmId++"@"++HostId),
+		   if_db:vm_update(Vm,not_available),
 		   [if_db:sd_delete(ServiceId,Vsn,ServiceVm)||{ServiceId,Vsn,_HostId,_VmId,ServiceVm}<-if_db:sd_read_all(),
 							      ServiceVm==Vm],
 		   Vm=list_to_atom(VmId++"@"++HostId),

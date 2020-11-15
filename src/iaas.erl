@@ -39,7 +39,7 @@
 %% --------------------------------------------------------------------
 %% Definitions 
 %% --------------------------------------------------------------------
--define(HbInterval,20*1000).
+-define(HbInterval,10*1000).
 -define(ControlVmId,"10250").
 -define(WorkerVmIds,["30000","30001","30002","30003","30004","30005","30006","30007","30008","30009"]).
 
@@ -304,15 +304,40 @@ code_change(_OldVsn, State, _Extra) ->
 %% Returns: non
 %% --------------------------------------------------------------------
 h_beat(Interval)->
-  %  timer:sleep(Interval),
- %   io:format(" *************** "),
- %   io:format(" ~p",[{time()}]),
- %   io:format(" *************** ~n"),
+ %   timer:sleep(Interval),
+    io:format(" *************** "),
+    io:format(" ~p",[{time(),?MODULE}]),
+    io:format(" *************** ~n"),
 
 
-    ok=rpc:call(node(),computer,check_update,[],5*60*1000),
-    ok=rpc:call(node(),vm,check_update,[],5*60*1000),
+    io:format("AllServices ~p~n",[{if_db:sd_read_all(),?MODULE,?LINE}]),
+    io:format("Allocated Vms : ~p~n",[if_db:vm_status(allocated)]),
+    io:format("Free Vms : ~p~n",[if_db:vm_status(free)]),
+ %   io:format( "NotAvailable Vms : ~p~n",[if_db:vm_status(not_available)]),
 
+    % Check status
+    StatusComputers=rpc:call(node(),computer,status_computers,[],3*60*1000),
+  %  io:format("StatusComputers ~p~n",[{StatusComputers,?MODULE,?LINE}]),
+  
+    StatusVms=rpc:call(node(),vm,status_vms,[StatusComputers],10*1000),
+  %  io:format("StatusVms ~p~n",[{StatusVms,?MODULE,?LINE}]),
+    
+    % Update teh dbase so it's consistent
+    Updates=rpc:call(node(),iaas_lib,update_dbase,[StatusComputers,StatusVms],10*1000),
+  %  io:format("Updates ~p~n",[{Updates,?MODULE,?LINE}]),
+    
+    % Try to create wanted state
+
+    WantedStateComputers=rpc:call(node(),iaas_lib,wanted_state_computers,[StatusComputers],5*60*1000),
+    io:format("WantedStateComputers ~p~n",[{WantedStateComputers,?MODULE,?LINE}]),
+ 
+  %  ok=rpc:call(node(),computer,check_update,[],5*60*1000),
+  %  ok=rpc:call(node(),vm,check_update,[],5*60*1000),
+
+%    io:format("AllServices ~p~n",[{if_db:sd_read_all(),?MODULE,?LINE}]),
+    io:format("Allocated Vms : ~p~n",[if_db:vm_status(allocated)]),
+    io:format("Free Vms : ~p~n",[if_db:vm_status(free)]),
+%    io:format( "NotAvailable Vms : ~p~n",[if_db:vm_status(not_available)]),
     timer:sleep(Interval),
     rpc:cast(node(),?MODULE,heart_beat,[Interval]).
  
