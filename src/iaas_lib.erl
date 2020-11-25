@@ -29,34 +29,42 @@
 
 wanted_state_computers(StatusComputers)->
 
-    _R=[if_db:computer_update(XHostId,Status)||{Status,XHostId}<-StatusComputers],
-  %  io:format("R =  ~p~n",[{R, time(),?MODULE,?LINE }]),
+    R=[if_db:computer_update(XHostId,Status)||{Status,XHostId}<-StatusComputers],
+    io:format("R =  ~p~n",[{R, time(),?MODULE,?LINE }]),
  
     AvailableComputers=if_db:computer_status(available),
-%    io:format("AvailableComputers =  ~p~n",[{AvailableComputers, time(),?MODULE,?LINE }]),
+    io:format("AvailableComputers =  ~p~n",[{AvailableComputers, time(),?MODULE,?LINE }]),
 
-    _CleanComputers=[computer:clean_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
- %   io:format("CleanComputers ~p~n",[{CleanComputers, time(),?MODULE,?LINE }]),    
+    CleanComputers=[computer:clean_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
+    io:format("CleanComputers ~p~n",[{CleanComputers, time(),?MODULE,?LINE }]),    
 
-    StartComputers=[computer:start_computer(XHostId,?ControlVmId)||{XHostId,available}<-AvailableComputers],
- %   io:format("StartComputers =  ~p~n",[{StartComputers, time(),?MODULE,?LINE }]),
-    StartVmsResult=case [if_db:vm_host_id(XHostId)||{XHostId,available}<-AvailableComputers] of
+    
+   % StartComputers=[{XHostId,rpc:call(node(),computer,start_computer,[XHostId,?ControlVmId],15000)}||{XHostId,available}<-AvailableComputers],
+    StartComputers=do_start_c(AvailableComputers,[]),
+    io:format("StartComputers =  ~p~n",[{StartComputers, time(),?MODULE,?LINE }]),
+    StartVmsResult=case lists:append([if_db:vm_host_id(XHostId)||{XHostId,available}<-AvailableComputers]) of
 		       []->
 			   [];
-		       [VmIds]-> 
-	%   io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
+		       VmIds-> 
+			   io:format("VmIds ~p~n",[{?MODULE,?LINE,VmIds }]),
 			   VmInfo=[{XHostId,VmId}||{_Vm,XHostId,VmId,worker,_Status}<-VmIds],
 						%   io:format("VmInfo ~p~n",[{?MODULE,?LINE,VmInfo }]),
-			   _CleanVms=[vm:clean_vm(WorkerVmId,XHostId)||{XHostId,WorkerVmId}<-VmInfo],
-	 %   io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
+			   CleanVms=[vm:clean_vm(WorkerVmId,XHostId)||{XHostId,WorkerVmId}<-VmInfo],
+			   io:format("CleanVms ~p~n",[{?MODULE,?LINE,CleanVms }]),
 			   StartVms=[{vm:start_vm(WorkerVmId,XHostId),XHostId}||{XHostId,WorkerVmId}<-VmInfo],
-	    io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
+			   io:format("StartVms ~p~n",[{?MODULE,?LINE,StartVms}]),
 			   StartVms
     end,
     
   {StartComputers,StartVmsResult}.
 
-
+do_start_c([],StartComputers)->
+    StartComputers;
+do_start_c([{XHostId,available}|T],Acc) ->
+    io:format(" XHostId ~p~n",[{XHostId,?MODULE,?LINE }]),
+    Result=computer:start_computer(XHostId,?ControlVmId),
+    io:format("Result ~p~n",[{Result,?MODULE,?LINE }]),
+    do_start_c(T,[Result|Acc]).    
 
 % --------------------------------------------------------------------
 %% Function:start/0 

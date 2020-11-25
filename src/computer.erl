@@ -138,27 +138,33 @@ clean_computer(HostId,VmId)->
     Result.
 
 start_computer(HostId,VmId)->
-    {ok,DbaseHostId}=inet:gethostname(),
-    DbaseVm=list_to_atom(?DbaseVmId++"@"++DbaseHostId),
-    StartResult=case rpc:call(DbaseVm,db_computer,read,[HostId]) of
+    io:format("start_computer HostId,VmId = ~p~n",[{HostId,VmId,?MODULE,?LINE}]),
+    StartResult=case if_db:computer_read(HostId) of
 		    []->
 			{error,[eexists,HostId,?MODULE,?LINE]};
 		    [{HostId,User,PassWd,IpAddr,Port,_Status}]->
-			ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"mkdir "++VmId,2*?TimeOut),
-			ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"erl -sname "++VmId++" -setcookie abc -detached ",2*?TimeOut),
+			io:format("HostId,User,PassWd,IpAddr,Port= ~p~n",[{HostId,User,PassWd,IpAddr,Port,?MODULE,?LINE}]),
+			io:format("mkdir = ~p~n",[{my_ssh:ssh_send(IpAddr,Port,User,PassWd,"mkdir "++VmId,2*?TimeOut),?MODULE,?LINE}]),
+			io:format("erl  = ~p~n",[{my_ssh:ssh_send(IpAddr,Port,User,PassWd,"erl -sname "++VmId++" -setcookie abc -detached ",2*?TimeOut),?MODULE,?LINE}]),
+			io:format(" = ~p~n",[{?MODULE,?LINE}]),
+		%	ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"mkdir "++VmId,3*?TimeOut),
+		%	ok=my_ssh:ssh_send(IpAddr,Port,User,PassWd,"erl -sname "++VmId++" -setcookie abc -detached ",3*?TimeOut),
 			Vm=list_to_atom(VmId++"@"++HostId),
-			R=check_started(500,Vm,10,{error,[Vm]}),
+			io:format("Vm = ~p~n",[{Vm,?MODULE,?LINE}]),
+			R=check_started(50,Vm,10,{error,[Vm]}),
+			io:format("check_started = ~p~n",[{R,?MODULE,?LINE}]),
 			case R of
 			    ok->
 				rpc:call(Vm,mnesia,start,[]),
-				db_computer:update(HostId,running),
-				db_vm:update(Vm,allocated),
+				if_db:computer_update(HostId,running),
+				if_db:vm_update(Vm,allocated),
 			        % starta common !!!!!
 				{ok,HostId};
 			    Err->
 				{error,[Err,Vm,?MODULE,?LINE]}
 			end			
 		end,
+    io:format("StartResult= ~p~n",[{StartResult,?MODULE,?LINE}]),
     StartResult.
 
 
