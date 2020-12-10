@@ -9,14 +9,14 @@
 
 
 -export([
-	 update_status_computers/0,
+	 status_computers/0,
 	 start_computer/2,
 	 clean_computer/1,
 	 clean_computer/2
 	]).
 
 -define(DbaseVmId,"10250").
--define(HostVmId,"10250").
+-define(ControlVmId,"10250").
 -define(TimeOut,3000).
 -define(ControlVmIds,["10250"]).
 
@@ -44,22 +44,16 @@
 
 %@doc, spec etc
 
-update_status_computers()->
+status_computers()->
     F1=fun get_hostname/2,
     F2=fun check_host_status/3,
-    {ok,HostId}=net:gethostname(),
-    DbaseVm=list_to_atom(HostId++"@"++HostId),
+    {ok,HostId}=inet:gethostname(),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
     Computers=rpc:call(DbaseVm,db_computer,read_all,[]),
   %  io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
     Status=mapreduce:start(F1,F2,[],Computers),
-    io:format("Computers Status = ~p~n",[{?MODULE,?LINE,Status}]),
-    Running=[if_db:computer_update(Host,running)||{running,Host}<-Status],
-%    io:format("Running = ~p~n",[{?MODULE,?LINE,Running}]),
-    Available=[if_db:computer_update(Host,available)||{available,Host}<-Status],
-%    io:format("Available = ~p~n",[{?MODULE,?LINE,Available}]),
-    NotAvailable=[if_db:computer_update(Host,not_available)||{not_available,Host}<-Status],
- %   io:format("NotAvailable = ~p~n",[{?MODULE,?LINE,NotAvailable}]),
-    ok.
+  %  io:format("Computers Status = ~p~n",[{?MODULE,?LINE,Status}]),
+    Status.
     
    
 
@@ -77,8 +71,8 @@ check_host_status(computer_status,Vals,_)->
 check_host_status([],Status)->
     Status;
 check_host_status([{HostId,[HostId]}|T],Acc)->
-    HostVm=list_to_atom(HostId++"@"++HostId),
-    NewAcc=case net_adm:ping(HostVm) of
+    Vm10250=list_to_atom("10250"++"@"++HostId),
+    NewAcc=case net_adm:ping(Vm10250) of
 	       pong->
 		   [{running,HostId}|Acc];
 	       pang->
