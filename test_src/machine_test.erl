@@ -4,17 +4,26 @@
 %%% 
 %%% Create1d : 10 dec 2012
 %%% -------------------------------------------------------------------
--module(iaas_tests). 
+-module(machine_test). 
     
 %% --------------------------------------------------------------------
 %% Include files
-%% --------------------------------------------------------------------
+
 -include_lib("eunit/include/eunit.hrl").
+%% --------------------------------------------------------------------
+
+%% --------------------------------------------------------------------
+%% Definitions
+-define(ClusterConfigDir,"cluster_config").
+-define(ClusterConfigFileName,"cluster_info.hrl").
+-define(GitUser,"joq62").
+-define(GitPassWd,"20Qazxsw20").
+%% --------------------------------------------------------------------
+
 
 %% --------------------------------------------------------------------
 %% External exports
 -export([start/0]).
-
 
 %% ====================================================================
 %% External functions
@@ -30,16 +39,12 @@ start()->
     ?assertEqual(ok,setup()),
     ?debugMsg("stop setup"),
 
-    ?debugMsg("Start print_status"),
-    spawn(fun()->print_status() end),
+    ?debugMsg("Start status"),
+    ?assertEqual(ok,status()),
+    ?debugMsg("stop status"),
 
-    ?debugMsg("Start machine_test"),
-    ?assertEqual(ok,machine_test:start()),
-    ?debugMsg("stop machine_test"),
+    ?assertEqual(ok,cleanup()),
 
-      %% End application tests
-  
-  %  cleanup(),
     ?debugMsg("------>"++atom_to_list(?MODULE)++" ENDED SUCCESSFUL ---------"),
     ok.
 
@@ -51,12 +56,9 @@ start()->
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
+
 setup()->
-    ssh:start(),
-    ?debugMsg("Start boot_test"),
-    ?assertEqual(ok,boot_test:start()),
-    ?debugMsg("stop boot_test"),
-%    ?assertEqual(ok,application:start(iaas)),
+
     ok.
 
 %% --------------------------------------------------------------------
@@ -64,23 +66,22 @@ setup()->
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
-print_status()->
-    timer:sleep(30*1000),
-    io:format(" *************** "),
-    io:format(" ~p",[{time(),?MODULE}]),
-    io:format(" *************** ~n"),
-    io:format("~p~n",[iaas:machine_status(all)]),
-    spawn(fun()->print_status() end).
-
-
-
-
+status()->
+    ?assertMatch([{running,[_,_,_]},
+		  {not_available,[]}],
+		 machine:status(all)),
+    ?assertEqual([running],
+		 machine:status("c2")),
+    ?assertEqual([running],
+		 machine:status("c0")),
+    
+    ok.
 %% --------------------------------------------------------------------
 %% Function:start/0 
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
-%% -------------------------------------------------------------------    
+%% -------------------------------------------------------------------
 
 cleanup()->
-    init:stop(),
+
     ok.

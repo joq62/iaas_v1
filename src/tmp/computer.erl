@@ -8,7 +8,7 @@
 
 
 
--export([
+-export([get_computer_status/1,
 	 update_status_computers/0,
 	 start_computer/2,
 	 clean_computer/1,
@@ -22,13 +22,36 @@
 
 %% ====================================================================
 %% External functions
-%% ====================================================================
+%% ============================ ========================================
 % --------------------------------------------------------------------
 %% Function:start/0 
 %% Description: Initiate the eunit tests, set upp needed processes etc
 %% Returns: non
 %% --------------------------------------------------------------------
-
+get_computer_status(Key)->
+    F1=fun get_hostname/2,
+    F2=fun check_host_status/3,
+    
+    Computers=db_computer:read_all(),
+ %   io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
+    Status=mapreduce:start(F1,F2,[],Computers),
+ %   io:format("Computers Status = ~p~n",[{?MODULE,?LINE,Status}]),
+    Running=[db_computer:update(Host,running)||{running,Host}<-Status],
+ %   io:format("Running = ~p~n",[{?MODULE,?LINE,Running}]),
+    Available=[db_computer:update(Host,available)||{available,Host}<-Status],
+ %   io:format("Available = ~p~n",[{?MODULE,?LINE,Available}]),
+    NotAvailable=[db_computer:update(Host,not_available)||{not_available,Host}<-Status],
+ %   io:format("NotAvailable = ~p~n",[{?MODULE,?LINE,NotAvailable}]),
+    Result=case Key of
+	       running->
+		   Running;
+	       available->
+		   Available;
+	       not_available->
+		   NotAvailable
+	   end,
+    Result.
+        
 
 % --------------------------------------------------------------------
 %% Function:start/0 
@@ -48,26 +71,26 @@ update_status_computers()->
     F1=fun get_hostname/2,
     F2=fun check_host_status/3,
     {ok,HostId}=net:gethostname(),
-    DbaseVm=list_to_atom(HostId++"@"++HostId),
-    Computers=rpc:call(DbaseVm,db_computer,read_all,[]),
-  %  io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
+    DbaseVm=list_to_atom(?DbaseVmId++"@"++HostId),
+    Computers=rpc:call(DbaseVm,if_db,computer_read_all,[]),
+%    io:format("Computers = ~p~n",[{?MODULE,?LINE,Computers}]),
     Status=mapreduce:start(F1,F2,[],Computers),
-    io:format("Computers Status = ~p~n",[{?MODULE,?LINE,Status}]),
-    Running=[if_db:computer_update(Host,running)||{running,Host}<-Status],
-%    io:format("Running = ~p~n",[{?MODULE,?LINE,Running}]),
-    Available=[if_db:computer_update(Host,available)||{available,Host}<-Status],
-%    io:format("Available = ~p~n",[{?MODULE,?LINE,Available}]),
-    NotAvailable=[if_db:computer_update(Host,not_available)||{not_available,Host}<-Status],
- %   io:format("NotAvailable = ~p~n",[{?MODULE,?LINE,NotAvailable}]),
+ %   io:format("Computers Status = ~p~n",[{?MODULE,?LINE,Status}]),
+    _Running=[if_db:computer_update(Host,running)||{running,Host}<-Status],
+  %  io:format("Running = ~p~n",[{?MODULE,?LINE,Running}]),
+    _Available=[if_db:computer_update(Host,available)||{available,Host}<-Status],
+  %  io:format("Available = ~p~n",[{?MODULE,?LINE,Available}]),
+    _NotAvailable=[if_db:computer_update(Host,not_available)||{not_available,Host}<-Status],
+  %  io:format("NotAvailable = ~p~n",[{?MODULE,?LINE,NotAvailable}]),
     ok.
     
    
 
 		  
-get_hostname(Parent,{HostId,User,PassWd,IpAddr,Port,_Status})->
+get_hostname(Parent,{HostId,User,PassWd,IpAddr,Port,_Status})->    
     Msg="hostname",
     Result=my_ssh:ssh_send(IpAddr,Port,User,PassWd,Msg,?TimeOut),
-  %  io:format("Result = ~p~n",[{?MODULE,?LINE,Result}]),
+   % io:format("Result, HostId= ~p~n",[{?MODULE,?LINE,Result,HostId}]),
     Parent!{computer_status,{HostId,Result}}.
 
 check_host_status(computer_status,Vals,_)->
@@ -77,13 +100,15 @@ check_host_status(computer_status,Vals,_)->
 check_host_status([],Status)->
     Status;
 check_host_status([{HostId,[HostId]}|T],Acc)->
-    HostVm=list_to_atom(HostId++"@"++HostId),
+    HostVm=list_to_atom(?DbaseVmId++"@"++HostId),
+  %  io:format("HostVm = ~p~n",[{?MODULE,?LINE,net_adm:ping(HostVm),HostVm}]),
     NewAcc=case net_adm:ping(HostVm) of
 	       pong->
 		   [{running,HostId}|Acc];
 	       pang->
 		   [{available,HostId}|Acc]
 	   end,
+  %  io:format("NewAcc = ~p~n",[{?MODULE,?LINE,NewAcc}]),
     check_host_status(T,NewAcc);
 check_host_status([{HostId,{error,_Err}}|T],Acc) ->
     check_host_status(T,[{not_available,HostId}|Acc]).

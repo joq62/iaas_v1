@@ -18,18 +18,35 @@
 %% Key Data structures
 %% 
 %% --------------------------------------------------------------------
--record(state, {}).
+-record(state, {computer_running,
+		computer_available,
+		computer_not_available,
+		vms_running,
+		vms_available,
+		vms_not_available,
+		vm_candidates}).
 
 
 
 %% --------------------------------------------------------------------
 %% Definitions 
--define(HbInterval,60*1000).
-
 %% --------------------------------------------------------------------
+-define(HbInterval,20*1000).
 
+% OaM related
+-export([boot/0,
+	 update_status_computers/0
+	]).
 
 -export([machine_status/1
+	]).
+
+-export([vm_status/1,computer_status/1,
+	 start_node/3,stop_node/1,
+	 active/0,passive/0,all/0,
+	 allocate_vm/0,free_vm/1,
+	 get_vm/2,get_all_vms/0,
+	 log/0
 	]).
 
 -export([start/0,
@@ -46,6 +63,17 @@
 %% External functions
 %% ====================================================================
 
+%% Asynchrounus Signals
+
+boot()->
+    ssh:start(),
+   
+   % application:start(common),
+   % application:start(dbase),
+   %{ok,Info}=file:consult(?InitFile),
+   % dbase:init_table_info(Info),
+
+    application:start(iaas).
 
 %% Gen server functions
 
@@ -60,6 +88,41 @@ ping()->
 machine_status(HostId)->
     gen_server:call(?MODULE, {machine_status,HostId},infinity).
 
+update_status_computers()->
+    gen_server:call(?MODULE, {update_status_computers},infinity).
+
+vm_status(Status)->
+    gen_server:call(?MODULE, {vm_status,Status},infinity).
+computer_status(Status)->
+    gen_server:call(?MODULE, {computer_status,Status},infinity).
+
+
+allocate_vm()->
+    gen_server:call(?MODULE, {allocate_vm},infinity).
+free_vm(Vm)->
+    gen_server:call(?MODULE, {free_vm,Vm},infinity).
+
+
+get_vm(Restrictions,HostIds)->
+    gen_server:call(?MODULE, {get_vm,Restrictions,HostIds},infinity).
+get_all_vms()->
+    gen_server:call(?MODULE, {get_all_vms},infinity).
+    
+
+    
+start_node(IpAddr,Port,VmId) ->
+    gen_server:call(?MODULE, {start_node,IpAddr,Port,VmId},infinity).
+stop_node(Vm) ->
+    gen_server:call(?MODULE, {stop_node,Vm},infinity).
+active()->
+    gen_server:call(?MODULE, {active},infinity).
+passive()->
+    gen_server:call(?MODULE, {passive},infinity).
+all()->
+    gen_server:call(?MODULE, {all},infinity).
+
+log()->
+    gen_server:call(?MODULE, {log},infinity).
 %%----------------------------------------------------------------------
 
 heart_beat(Interval)->
@@ -85,7 +148,13 @@ heart_beat(Interval)->
 init([]) ->
     ssh:start(),
     spawn(fun()->h_beat(?HbInterval) end),
-    {ok, #state{}}.
+    {ok, #state{computer_running=[],
+		computer_available=[],
+		computer_not_available=[],
+		vms_running=[],
+		vms_available=[],
+		vms_not_available=[],
+		vm_candidates=[]}}.
     
 %% --------------------------------------------------------------------
 %% Function: handle_call/3
@@ -108,6 +177,88 @@ handle_call({machine_status,all},_From,State) ->
 handle_call({machine_status,HostId},_From,State) ->
     Reply=rpc:call(node(),machine,read_status,[HostId],10*1000),
     {reply, Reply, State};
+
+handle_call({get_all_vms},_From,State) ->
+    Reply=State#state.vm_candidates,
+    {reply, Reply, State};
+
+
+handle_call({update_status_computers},_From,State) ->
+    Reply=rpc:call(node(),computer,update_status_computers,[],2*10000),	  
+    {reply, Reply, State};
+
+handle_call({allocate_vm},_From,State) ->
+    Reply=rpc:call(node(),vm,allocate,[],5000),	  
+    {reply, Reply, State};
+
+handle_call({free_vm,Vm},_From,State) ->
+    Reply=rpc:call(node(),vm,free,[Vm],5000),	  
+    {reply, Reply, State};
+
+
+handle_call({get_vm,Restriction,HostIds},_From,State) ->
+   
+    Reply=case Restriction of
+	      not_from->
+		  case [{XHostId,XVmId}||{XHostId,XVmId}<-State#state.vm_candidates,
+					 false==lists:member(XHostId,HostIds)] of
+		      []->		
+			  NewState=State,	  
+			  {error,[no_vms_running]};
+		      [{YHostId,YVmId}|_]->
+			  X=lists:delete({YHostId,YVmId},State#state.vm_candidates),
+			  NewState=State#state{vm_candidates=lists:append(X,[{YHostId,YVmId}])},
+			  {ok,{YHostId,YVmId,list_to_atom(YVmId++"@"++YHostId)}}
+		  end;
+	      from ->
+		  case [{XHostId,XVmId}||{XHostId,XVmId}<-State#state.vm_candidates,
+					 true==lists:member(XHostId,HostIds)] of
+		      []->		
+			  NewState=State,	  
+			  {error,[no_vms_running]};
+		      [{YHostId,YVmId}|_]->
+			  X=lists:delete({YHostId,YVmId},State#state.vm_candidates),
+			  NewState=State#state{vm_candidates=lists:append(X,[{YHostId,YVmId}])},
+			  {ok,{YHostId,YVmId,list_to_atom(YVmId++"@"++YHostId)}}
+		  end;
+	      Err->
+		  NewState=State,
+		  {error,[eexists,Err]}
+	  end,  
+    {reply, Reply, NewState};
+
+handle_call({vm_status,Status},_From,State) ->
+    Reply=rpc:call(node(),oam_iaas,vm_status,[Status],5000),
+    {reply,Reply,State};
+
+handle_call({computer_status,Status},_From,State) ->
+    Reply=rpc:call(node(),oam_iaas,computer_status,[Status],5000),
+    {reply,Reply,State};
+
+
+handle_call({start_node,IpAddr,Port,VmId},_From,State) ->
+    Reply={not_implemented,start_node,IpAddr,Port,VmId},
+    {reply,Reply,State};
+
+handle_call({stop_node,Vm},_From,State) ->
+    Reply={not_implemented,stop_node,Vm},
+    {reply,Reply,State};
+
+handle_call({passive},_From,State) ->
+    Reply={not_implemented,passive},
+    {reply,Reply,State};
+
+handle_call({active},_From,State) ->
+    Reply={not_implemented,active},
+    {reply,Reply,State};
+
+handle_call({all},_From,State) ->
+    Reply={not_implemented,all},
+    {reply,Reply,State};
+
+handle_call({log},_From,State) ->
+    Reply={not_implemented,log},
+    {reply,Reply,State};
 
 handle_call({stop}, _From, State) ->
     {stop, normal, shutdown_ok, State};

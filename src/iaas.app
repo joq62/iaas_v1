@@ -2,7 +2,7 @@
 %% application.
 {application, iaas,
 [{description, "iaas" },
-{vsn, "0.0.1" },
+{vsn, "1.0.0" },
 {modules, 
 	  [iaas_app,iaas_sup,iaas,
 		iaas_lib]},
